@@ -1,17 +1,12 @@
----
-title: "Scripts For Negative Binomial, Zero Inflated Negative Binomial, and Multinomial Regression On Traveling Model"
-author: "Zhanhao Zhang"
-date: "7/6/2019"
-output: rmarkdown::github_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+Scripts For Negative Binomial, Zero Inflated Negative Binomial, and
+Multinomial Regression On Traveling Model
+================
+Zhanhao Zhang
+7/6/2019
 
 ## Packages needed
 
-```{r, eval=FALSE}
+``` r
 library(data.table)
 library(MASS)
 library(ggplot2)
@@ -22,7 +17,8 @@ library(nnet)
 ```
 
 ## Read data
-```{r, eval=FALSE}
+
+``` r
 data <- read.csv("travel_times.csv", header = T)
 colnames <- colnames(data)
 BI_survey_data <- read.csv("BI_survey_data.csv", header = T)
@@ -30,15 +26,18 @@ BI_survey_data <- data.table(BI_survey_data)
 ```
 
 ## Helper functions
+
 Calculate the distance between two coordinates.
-```{r, eval=FALSE}
+
+``` r
 dist <- function(src_cor, dest_cor){
   return(sqrt((src_cor$X - dest_cor$X)^2 + (src_cor$Y - dest_cor$Y)^2))
 }
 ```
 
 Get the population of a given location
-```{r, eval=FALSE}
+
+``` r
 pop <- function(str){
   str <- cvt(str)
   if(length(str) == 1 && str=="EG_Mainland"){
@@ -55,8 +54,10 @@ pop <- function(str){
 }
 ```
 
-Convert the strings that indicate travel destinations in the column names to the name of that location. For instance, "ti_ban" to "Baney".
-```{r, eval=FALSE}
+Convert the strings that indicate travel destinations in the column
+names to the name of that location. For instance, “ti\_ban” to “Baney”.
+
+``` r
 cvt <- function(str){
   if(str == "ti_ban"){
     return("Baney")
@@ -77,8 +78,11 @@ cvt <- function(str){
 }
 ```
 
-Get the coordinates of a location. The coordinates is looked up from wikipedia, and the coordinates adopted are at the center of each location.
-```{r, eval=FALSE}
+Get the coordinates of a location. The coordinates is looked up from
+wikipedia, and the coordinates adopted are at the center of each
+location.
+
+``` r
 loc2 <- function(str){
   str <- cvt(str)
   if(length(str) == 1 && str == "EG_Mainland"){
@@ -104,9 +108,20 @@ loc2 <- function(str){
 }
 ```
 
-Get the travel time from a source location (given by areaID) to a destination location (given by its name). The travel times are obtained from google map. Notice that for each offland travels, people have to travel to Malabo first before they travel offland to the mainland of Equatorial Guinea, so the travel time from that location to the mainland equals to the time from Malabo to the mainland (Bata city) plus the travel time from the source location to Malabo.  
-One thing to be aware of is that we have travel time from each areaId to each areaId, but we only need the travel time from an areaId to one of the 7 destinations (Baney, Malabo, ...), so the travel time is calculated on the average time of the source areaId to all other areaIds that belong to the destination.
-```{r, eval=FALSE}
+Get the travel time from a source location (given by areaID) to a
+destination location (given by its name). The travel times are obtained
+from google map. Notice that for each offland travels, people have to
+travel to Malabo first before they travel offland to the mainland of
+Equatorial Guinea, so the travel time from that location to the mainland
+equals to the time from Malabo to the mainland (Bata city) plus the
+travel time from the source location to Malabo.  
+One thing to be aware of is that we have travel time from each areaId to
+each areaId, but we only need the travel time from an areaId to one of
+the 7 destinations (Baney, Malabo, …), so the travel time is calculated
+on the average time of the source areaId to all other areaIds that
+belong to the destination.
+
+``` r
 tt <- function(id_src, str_dest){
   str_dest <- cvt(str_dest)
   if(length(str_dest) == 1 && str_dest == "EG_Mainland"){
@@ -130,14 +145,18 @@ tt <- function(id_src, str_dest){
 }
 ```
 
-Stores all the travel destinations from the BI_survey_data's column names.
-```{r, eval=FALSE}
+Stores all the travel destinations from the BI\_survey\_data’s column
+names.
+
+``` r
 centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria", 
               "ti_mok", "ti_ure")
 ```
 
-Fetch the commuting flow from a given areaId to a given destination from the BI_survey_data.
-```{r, eval=FALSE}
+Fetch the commuting flow from a given areaId to a given destination from
+the BI\_survey\_data.
+
+``` r
 C <- function(src_id, dest){
   res <- BI_survey_data[areaId==src_id,][[dest]]
   if(length(res) == 0){
@@ -148,8 +167,14 @@ C <- function(src_id, dest){
 ```
 
 # Negative Binomial Regressions
-A helper function to obtain the correlation plots between the ratio of true value to fitted value and one of the specified covariates (source population, destination population, distance, and travel time). If the true values are 0, then the plots show the relations between the fitted value to that specified covariate.
-```{r}
+
+A helper function to obtain the correlation plots between the ratio of
+true value to fitted value and one of the specified covariates (source
+population, destination population, distance, and travel time). If the
+true values are 0, then the plots show the relations between the fitted
+value to that specified covariate.
+
+``` r
 # Correlation plots
 cor_plot_noBox2 <- function(inv, name, log, model, classification, dir, dat){
   inv <- as.numeric(inv)
@@ -187,8 +212,12 @@ cor_plot_noBox2 <- function(inv, name, log, model, classification, dir, dat){
 ```
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression Without Additional Covariates
-Construct a new dataframe, gravity_dat, that stores the commuting flow, source population, destination population, travel time, and geographic distance between each pair (areaId, destination name).
-```{r, eval=FALSE}
+
+Construct a new dataframe, gravity\_dat, that stores the commuting flow,
+source population, destination population, travel time, and geographic
+distance between each pair (areaId, destination name).
+
+``` r
 gravity_dat <- c()
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
@@ -211,14 +240,30 @@ for(i in 1:nrow(BI_survey_data)){
 gravity_dat <- data.frame(gravity_dat)
 ```
 
-Get rid of the last row, which comes from Ureka to Ureka. Ureka has only one areaId in the BI_survey_data, and since the travel time is calculated based on the average time from the areaId of source location to all areaIds belong to the destination, we get a 0 for travel time from Ureka to Ureka. Without moving this row, problems will arise.
-```{r, eval=FALSE}
+Get rid of the last row, which comes from Ureka to Ureka. Ureka has only
+one areaId in the BI\_survey\_data, and since the travel time is
+calculated based on the average time from the areaId of source location
+to all areaIds belong to the destination, we get a 0 for travel time
+from Ureka to Ureka. Without moving this row, problems will arise.
+
+``` r
 rel_gravity_dat <- gravity_dat[1:1357,]
 ```
 
-A helper function to generate correlation plots on a given cutoff. The cutoff can be on geographical distance or on travel time. Also, this function can be slightly modified to switch between negative binomial regression and zero inflated negative binomial regression. The return values of this function include the fitted models and the true values on both sides of the cutoff.  
-One thing to notice is that if the cutoff travel distance is greater than 60K, I will remove the covariate N2, because beyond that cutoff, the trips in with higher distance than cutoff only have one destination, the mainland Equitorial Guinea, and thus the destination population will always be the same. Without removing this feature, the zero inflated model will crash.
-```{r, eval=FALSE}
+A helper function to generate correlation plots on a given cutoff. The
+cutoff can be on geographical distance or on travel time. Also, this
+function can be slightly modified to switch between negative binomial
+regression and zero inflated negative binomial regression. The return
+values of this function include the fitted models and the true values on
+both sides of the cutoff.  
+One thing to notice is that if the cutoff travel distance is greater
+than 60K, I will remove the covariate N2, because beyond that cutoff,
+the trips in with higher distance than cutoff only have one destination,
+the mainland Equitorial Guinea, and thus the destination population will
+always be the same. Without removing this feature, the zero inflated
+model will crash.
+
+``` r
 plot_cutoff <- function(cutoff, base_dir){
   rel_gravity_dat3 <- rel_gravity_dat[rel_gravity_dat$d > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat[rel_gravity_dat$d <= cutoff,]
@@ -278,8 +323,11 @@ plot_cutoff <- function(cutoff, base_dir){
 }
 ```
 
-This chunk of code will calculate the AIC and Sum of Residual Square for each cutoff value of geographic distance or travel time, and then write the results into a CSV file.
-```{r, eval=FALSE}
+This chunk of code will calculate the AIC and Sum of Residual Square for
+each cutoff value of geographic distance or travel time, and then write
+the results into a CSV file.
+
+``` r
 aics <- c()
 cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200, 220, 240) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
@@ -307,8 +355,13 @@ write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression With Additional Covariates (Indicators for Ad2 and travel time or geographic distance between source and Malabo)
 
-Get the relevant data as a dataframe. This is almost identical to the dataframe for regressions without additional covariates, except that it includes the indicators and travel time and geographic distance between source location and Malabo. Again, the last row of the dataframe, which has a travel time of 0, is removed.
-```{r, eval=FALSE}
+Get the relevant data as a dataframe. This is almost identical to the
+dataframe for regressions without additional covariates, except that it
+includes the indicators and travel time and geographic distance between
+source location and Malabo. Again, the last row of the dataframe, which
+has a travel time of 0, is removed.
+
+``` r
 gravity_dat_covs <- c()
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
@@ -342,8 +395,11 @@ gravity_dat_covs <- data.frame(gravity_dat_covs)
 rel_gravity_dat_covs <- gravity_dat_covs[1:1357,]
 ```
 
-A helper function to plot generate the correlation plots on the given cutoff. It is almost identical to the plot_cutoff() function above, except that it includes additional covariates in its models.
-```{r, eval=FALSE}
+A helper function to plot generate the correlation plots on the given
+cutoff. It is almost identical to the plot\_cutoff() function above,
+except that it includes additional covariates in its models.
+
+``` r
 plot_cutoff_covs <- function(cutoff, base_dir){
   rel_gravity_dat3 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d <= cutoff,]
@@ -429,8 +485,13 @@ plot_cutoff_covs <- function(cutoff, base_dir){
 }
 ```
 
-Plot the correlation plots at each cutoff, and calculate AIC and sum of residual squares for each case. This is the same as the one for negative binomial regression/zero inflated negative binomial regression without additional covariates above, except that for the calculation of AIC, its constant is 24 instead of 8, since we have 12 covariates instead of 4.
-```{r, eval=FALSE}
+Plot the correlation plots at each cutoff, and calculate AIC and sum of
+residual squares for each case. This is the same as the one for negative
+binomial regression/zero inflated negative binomial regression without
+additional covariates above, except that for the calculation of AIC, its
+constant is 24 instead of 8, since we have 12 covariates instead of 4.
+
+``` r
 aics <- c()
 cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200, 220, 240) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
@@ -464,10 +525,17 @@ write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep
 
 # Multinomial Regression
 
-Prepare the relevant data and true values as dataframes for multinomial regression.  
-rel_dat_mul is used for training the multinomial regression model. For each pair of locations (areaId for source, name of destination), it the commuting flow w is greater than 0, then the same pair will repeat for w times. The levels of multinomial regression are the 7 different destinations.  
-test_dat_mul stores the dataframe without repeating these pairs. It is used for getting the predicted values comparable to the true values.
-```{r, eval=FALSE}
+Prepare the relevant data and true values as dataframes for multinomial
+regression.  
+rel\_dat\_mul is used for training the multinomial regression model. For
+each pair of locations (areaId for source, name of destination), it the
+commuting flow w is greater than 0, then the same pair will repeat for w
+times. The levels of multinomial regression are the 7 different
+destinations.  
+test\_dat\_mul stores the dataframe without repeating these pairs. It is
+used for getting the predicted values comparable to the true values.
+
+``` r
 rel_dat_mul <- c()
 test_dat_mul <- c()
 for(i in 1:nrow(BI_survey_data)){
@@ -524,8 +592,11 @@ for(i in 1:ncol(test_dat_mul)){
 }
 ```
 
-Train the multinomial regression model, and transform the predicted values into a format that is comparable with the true values in the dataset. Then, get the sum of residual squares.
-```{r, eval=FALSE}
+Train the multinomial regression model, and transform the predicted
+values into a format that is comparable with the true values in the
+dataset. Then, get the sum of residual squares.
+
+``` r
 mul_reg <- multinom(dest~., maxit=5000, data = rel_dat_mul)
 pred_mul <- predict(mul_reg, test_dat_mul, "probs")
 for(i in 1:ncol(pred_mul)){
@@ -538,8 +609,11 @@ sub <- sub[,as.numeric(order(colnames(sub)))]
 sum((pred_mul - sub)^2)
 ```
 
-The helper function for obtaining correlation plots on the multinomial regression model.
-```{r, eval=FALSE}
+The helper function for obtaining correlation plots on the multinomial
+regression
+model.
+
+``` r
 mul_plot_noBox2 <- function(inv, name, log, pred, classification, dir, orig){
   inv <- as.numeric(inv)
   dv <- orig / pred
@@ -575,9 +649,11 @@ mul_plot_noBox2 <- function(inv, name, log, pred, classification, dir, orig){
 }
 ```
 
-Get the original values, predicted values and data with the format that can easily obtain correlation plots.  
+Get the original values, predicted values and data with the format that
+can easily obtain correlation plots.  
 And, plot these correlation plots.
-```{r, eval=FALSE}
+
+``` r
 dat <- c()
 pred_mul_rs <- c()
 orig <- c()
@@ -621,4 +697,3 @@ mul_plot_noBox2(dat$d, "distance", T, pred_mul_rs,
 mul_plot_noBox2(dat$t, "distance", T, pred_mul_rs, 
                 "multinom", dir_name, orig)
 ```
-
