@@ -4,6 +4,19 @@ Multinomial Regression On Traveling Model
 Zhanhao Zhang
 7/6/2019
 
+Please add the following features:
+
+  * Add a section explaining, in text or in a bulleted list, all of the different types of models that you are planning on trying.  I know that somewhere here you've tried using a model that incorporates an exponential dependence on distance, but I can't actually find that model anywhere.
+  * Relatedly, I'm not sure I believe that adding location covariates to the model makes it perform significantly worse.  This contradicts my own preliminary work on these model fits.  I could be wrong, but it really doesn't make sense to me that knowing which ad2 region someone is traveling from would make the model perform so much worse.  One purpose of this document would be for you to be able to show me how you are transforming your data such that I know how the regression you're performing works, but I can't immediately find in the document where you explain how you're incorporating these locations.  (See next comment.)
+  * Whenever you clean a data table for a particular regression model or set of models, explain the features of that data table - that can be as simple as listing the covariate names and what they mean.
+  * Please add the Poisson regression to the negative binomial regression - I want to know whether this does significantly worse.
+  * You can add to this git repo a folder containing all of the related plots, labelled clearly.
+  * Please change the titles of the models in the summary CSV to be consistent with the titles of the models in the document, and with the titles of the models that you plot.  Currently there is no way for me to see which model goes with which part of the summary CSV.
+  * I am going to need to actually use your models - they need to be available to me to use.  Ideally, I would like to be able to look at the spreadsheet + plots, identify which specific model I'd like to use, and then get access to that model.  I don't see where I'd be able to do that here.  Here are two suggestions for how to do this (do whichever takes up less memory on disk):
+      * Save the cleaned data for each type of model in this git repo, and provide me with clearly documented scripts which let me reproduce the model fit object (which then I can use to pull out coefficients + make predictions)
+      * Save a bunch of `lm` objects which I can then read back into `R` to interact with.
+
+
 ## Packages needed
 
 ``` r
@@ -41,7 +54,7 @@ dist <- function(src_cor, dest_cor){
   # Outputs:
   #   the geographic distance between these two locations
   ###
-  
+
   return(sqrt((src_cor$X - dest_cor$X)^2 + (src_cor$Y - dest_cor$Y)^2))
 }
 ```
@@ -58,20 +71,20 @@ pop <- function(str){
   # Outputs
   #   the population of the given location
   ###
-  
+
   # convert the string format (ex. from "ti_ban" to "Baney")
   # notice that "ti_mal" indicates traveling to Peri or Malabo
-  # so for "ti_mal", the str will be converted to 
+  # so for "ti_mal", the str will be converted to
   # a vector ("Peri", "Malabo"), which will be explained in more
   # details in the documentation for cvt()
   str <- cvt(str)
-  
+
   # if the destination is the mainland of equatorial guinea, then
   # return its population directly
   if(length(str) == 1 && str=="EG_Mainland"){
     return(1129996)
   }
-  
+
   # if the destination is somewhere in the bioko island, then the
   # population of that location is calculated by summing over
   # population in all areaIds that belong to that location
@@ -79,7 +92,7 @@ pop <- function(str){
   for(s in str){
     res <- c(res, BI_survey_data[ad2==s, pop])
   }
-  
+
   # if the input str is invalid, then return 0
   if(length(res) == 0){
     return(0)
@@ -96,7 +109,7 @@ cvt <- function(str){
   ###
   # cvt() is a function that converts a string to a more readable format
   # for instance, it will convert "ti_ban" to "Baney"
-  # For "ti_mal", since it indicates traveling to Malabo and Peri, this 
+  # For "ti_mal", since it indicates traveling to Malabo and Peri, this
   # function will convert it to a vector ("Malabo", "Peri")
   # Inputs:
   #   str: the string to be converted, which is formatted as "ti_ban"
@@ -104,7 +117,7 @@ cvt <- function(str){
   #   the more readable version of the string
   #   return NULL for illegal input
   ###
-  
+
   if(str == "ti_ban"){
     return("Baney")
   } else if(str == "ti_mal"){
@@ -128,6 +141,8 @@ Get the coordinates of a location. The coordinates is looked up from
 wikipedia, and the coordinates adopted are at the center of each
 location.
 
+_We cannot use Wikipedia as a source for this._
+
 ``` r
 loc2 <- function(str){
   ###
@@ -137,19 +152,19 @@ loc2 <- function(str){
   # Outputs:
   #   a list, with X and Y coordinates of the location
   ###
-  
+
   # convert the input string into a more readable format
   str <- cvt(str)
-  
+
   if(length(str) == 1 && str == "EG_Mainland"){
     return(list(X = 583415.41, Y = 204498.92))
   }
-  
+
   # if the input is illegal, return NULL
   if(length(str) == 0){
     return(NULL)
   }
-  
+
   # if the destinations are Malabo and Peri, return the center
   # of these two locations
   if(length(str) == 2){
@@ -190,7 +205,7 @@ tt <- function(id_src, str_dest){
   # source location to a destination location
   # Inputs:
   #   id_src: the areaId of the source location
-  #   str_dest: the name (formated as "ti_ban") of the 
+  #   str_dest: the name (formated as "ti_ban") of the
   #             destination location
   # Outputs:
   #   the travel time between these two locations
@@ -202,24 +217,24 @@ tt <- function(id_src, str_dest){
   # between the areaId of source location and all other areaIds that
   # belong to the destination location
   ###
-  
+
   # Conver the name of destination to a more readable version
   str_dest <- cvt(str_dest)
-  
+
   # If the destination is the mainland of equatorial guinea, then
   # people have to travel from their source location to Malabo first,
   # and then take airplanes from Malabo to the mainland (the Bata City)
-  # It takes them 140 minutes to travel from Malabo to the Bata City, 
+  # It takes them 140 minutes to travel from Malabo to the Bata City,
   # which includes the waiting time at the airport
   if(length(str_dest) == 1 && str_dest == "EG_Mainland"){
     return(140 + tt(id_src, "ti_mal"))
   }
-  
+
   # return NULL for illegal inputs
   if(length(str_dest) == 0){
     return(NULL)
   }
-  
+
   # Otherwise, of the travel destination is somewhere inside the
   # Bioko island, then return the average travel time between the
   # source areaId to the destination
@@ -244,7 +259,7 @@ Stores all the travel destinations from the BI\_survey\_data’s column
 names.
 
 ``` r
-centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria", 
+centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria",
               "ti_mok", "ti_ure")
 ```
 
@@ -263,7 +278,7 @@ C <- function(src_id, dest){
   #   the commuting flow between these two locations
   ###
   res <- BI_survey_data[areaId==src_id,][[dest]]
-  
+
   # return 0 if the src_id is not found
   if(length(res) == 0){
     return(0)
@@ -282,6 +297,8 @@ population, destination population, distance, and travel time). If the
 true values are 0, then the plots show the relations between the fitted
 value to that specified covariate.
 
+_What are `x` and `y`?  What is `exp`?_
+
 ``` r
 # Correlation plots
 cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
@@ -289,20 +306,20 @@ cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
   y <- as.numeric(y)
   z <- which(y != 0)
   p2 <- ggplot() +
-    geom_point(data = NULL, 
+    geom_point(data = NULL,
                aes(x = x[z], y = y[z]), col = "red") +
     ggtitle(paste(title, y_name, "vs", x_name)) +
-    xlab(x_name) + ylab(y_name) + 
+    xlab(x_name) + ylab(y_name) +
     geom_line(data = NULL, aes(x=x[z], y=exp[z]), col="black") +
-    scale_y_log10(limits = c(0.01, 100)) + 
+    scale_y_log10(limits = c(0.01, 100)) +
     theme(legend.position = "none")
     p2 <- p2 + scale_x_log10()
-  
-  p <- ggplot() + 
-    geom_point(data=NULL, 
+
+  p <- ggplot() +
+    geom_point(data=NULL,
                aes(x=x, y=res, col="red")) +
     ggtitle(paste(title, "residual plot" , x_name)) +
-    xlab(x_name) + ylab("residual plot") + 
+    xlab(x_name) + ylab("residual plot") +
     geom_hline(yintercept = 0, col="black") +
     theme(legend.position = "none")
 
@@ -323,13 +340,13 @@ cor_plot_all <- function(title, dat){
                         rep(1, length(dat$d)), "travel time",
                         "w^{(D)} / w^{(M)}", title)
   g1 <- ggarrange(p1$ratio_plot, p2$ratio_plot, p3$ratio_plot,    
-                  p4$ratio_plot, ncol = 4, 
+                  p4$ratio_plot, ncol = 4,
                   labels = c("A", "B", "C", "D"))
-  g2 <- ggarrange(p1$residual_plot, p2$residual_plot, p3$residual_plot, 
-                  p4$residual_plot, ncol = 4, 
+  g2 <- ggarrange(p1$residual_plot, p2$residual_plot, p3$residual_plot,
+                  p4$residual_plot, ncol = 4,
                   labels = c("A", "B", "C", "D"))
   g <- ggarrange(g1, g2, nrow = 2)
-  
+
   png(filename = paste(title, ".png", sep=""), width = 1200, height = 600)
   print(g)
   dev.off()
@@ -349,7 +366,7 @@ gravity_dat <- c()
 # which are areaIds in the BI_survey_data
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
-  
+
   # The second for-loop iterate through all possible destinations
   for(dest in centrals){
     w <- C(dat$areaId, dest)
@@ -363,7 +380,7 @@ for(i in 1:nrow(BI_survey_data)){
       d <- d + dist(loc2("ti_mal"), dest_cor)
     }
     t <- tt(dat$areaId, dest)
-    gravity_dat <- rbind(gravity_dat, 
+    gravity_dat <- rbind(gravity_dat,
                          list(w = w, N1 = N1, N2 = N2, d = d, t = t))
   }
 }
@@ -397,7 +414,7 @@ model will crash.
 plot_cutoff <- function(cutoff, base_dir){
   rel_gravity_dat3 <- rel_gravity_dat[rel_gravity_dat$d > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat[rel_gravity_dat$d <= cutoff,]
-  
+
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
   y_nb <- as.numeric(dat[,1])
@@ -416,17 +433,17 @@ plot_cutoff <- function(cutoff, base_dir){
   if(cutoff <= 0){
     #dir_name <- paste(base_dir, "/no_cutoff", sep = "")
     #dir.create(dir_name)
-    
+
     dat <- cbind(dat, list(pred=nb$fitted.values))
     for(i in 1:ncol(dat)){
       dat[,i] <- unlist(dat[,i])
     }
     cor_plot_all(paste("zinf_dist_noCov_cutoff=", cutoff, sep=""), dat)
-    
+
     return(list(nb=nb, nb2=list(fitted.values=0, aic=8, loglik=0), f1=y_nb, f2=0))
     #return(c(8-2*nb$loglik, 8, sum(nb$residuals^2), 0))
   }
-  
+
   dat2 <- rel_gravity_dat4
   y_nb2 <- as.numeric(dat2[,1])
   N1_nb2 <- log(as.numeric(dat2$N1))
@@ -438,14 +455,14 @@ plot_cutoff <- function(cutoff, base_dir){
 
   #dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
   #dir.create(dir_name)
-  
+
   dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
                                                      nb2$fitted.values)))
   for(i in 1:ncol(dat_all)){
       dat_all[,i] <- unlist(dat_all[,i])
     }
   cor_plot_all(paste("[model]_noCov_cutoff=", cutoff, sep=""), dat_all)
-  
+
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
   #return(c(8-nb$loglik, 8-nb2$loglik, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -481,7 +498,7 @@ aics
 # The "summary" is a matrix that holds the AIC and Sum of residual
 # squares information at each cutoff.
 summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
-colnames(summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
+colnames(summary) <- c("Cutoffs", "AIC Far", "AIC Near",
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
 summary
@@ -519,7 +536,7 @@ for(i in 1:nrow(BI_survey_data)){
     d2 <- dist(src_cor, mal_cor)
     t <- tt(dat$areaId, dest)
     t2 <- tt(dat$areaId, "ti_mal")
-    
+
     # create indicators for the ad2
     # ind is initialzed with a list, where each of the 7 locations
     # is mapped to 0
@@ -533,7 +550,7 @@ for(i in 1:nrow(BI_survey_data)){
                 Riaba = 0, Moka = 0, Ureka = 0)
     ad2 <- unique(BI_survey_data[areaId==dat$areaId, ad2])
     ind[ad2] <- 1
-    
+
     lst <- list(w = w, N1 = N1, N2 = N2, d = d, d_mal = d2, t=t, t_mal=t2)
     lst <- append(lst, ind)
     gravity_dat_covs <- rbind(gravity_dat_covs, lst)
@@ -551,7 +568,7 @@ except that it includes additional covariates in its models.
 plot_cutoff_covs <- function(cutoff, base_dir){
   rel_gravity_dat3 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d <= cutoff,]
-  
+
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
   y_nb <- as.numeric(dat[,1])
@@ -570,7 +587,7 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   ureka_nb <- as.numeric(dat$Ureka)
   #nb <- glm.nb(y_nb~N1_nb+N2_nb+d_nb+d2_nb+peri_nb+malabo_nb+
    #              baney_nb+luba_nb+riaba_nb+moka_nb+ureka_nb)
-  
+
   nb <- NA
   if(cutoff <= 60000){
     nb <- zeroinfl(y_nb~N1_nb+N2_nb+d_nb+d2_nb + peri_nb+malabo_nb+
@@ -583,18 +600,18 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   if(cutoff <= 0){
     dir_name <- paste(base_dir, "/no_cutoff", sep = "")
     dir.create(dir_name)
-    
+
     dat <- cbind(dat, list(pred=nb$fitted.values))
     for(i in 1:ncol(dat)){
       dat[,i] <- unlist(dat[,i])
     }
     cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat)
-    
+
     return(list(nb=nb, nb2=list(fitted.values=0, aic=24, loglik=0), f1=y_nb, f2=0))
     #return(c(nb$aic, 0, sum(nb$residuals^2), 0))
     #return(c(24-nb$loglik, 0, sum(nb$residuals^2), 0))
   }
-  
+
   dat2 <- rel_gravity_dat4
   y_nb2 <- as.numeric(dat2[,1])
   N1_nb2 <- log(as.numeric(dat2$N1))
@@ -612,20 +629,20 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   ureka_nb2 <- as.numeric(dat2$Ureka)
   #nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+d_nb2+d2_nb2+peri_nb2+malabo_nb2+
    #              baney_nb2+luba_nb2+riaba_nb2+moka_nb2+ureka_nb2)
-  
+
   nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+d_nb2+d2_nb2+peri_nb2+malabo_nb2+
                  baney_nb2+luba_nb2+riaba_nb2+moka_nb2, dist="negbin")
-  
+
   dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
   dir.create(dir_name)
-  
+
   dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
                                                      nb2$fitted.values)))
   for(i in 1:ncol(dat_all)){
       dat_all[,i] <- unlist(dat_all[,i])
     }
   cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat_all)
-  
+
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
   #return(c(24-nb$loglik, 24-nb2$loglik, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -662,7 +679,7 @@ sum(nb_mul_cov$residuals^2)
 
 aics
 aics_summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2]-24, aics[,3]+aics[,4])
-colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
+colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near",
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
 
@@ -671,6 +688,8 @@ write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep
 ```
 
 # Multinomial Regression
+
+_What's different for how you need to prepare the data for multinomial regression compared to the other regressions?_
 
 Prepare the relevant data and true values as dataframes for multinomial
 regression.  
@@ -704,17 +723,17 @@ for(i in 1:nrow(BI_survey_data)){
     N2 <- pop(d)
     all_N2[paste("N2.", d, sep="")] <- N2
   }
-  
+
   lst <- append(lst, all_N2)
   lst <- append(lst, all_t)
-  
+
   src_cor <- BI_survey_data[areaId==row$areaId, .(X, Y)]
   dest_cor <- loc2(dest)
   mal_cor <- loc2("ti_mal")
   t2 <- tt(row$areaId, "ti_mal")
-  
+
   lst <- append(lst, list(t_mal=t2))
-  
+
   for(dest in centrals){
     w <- row[[dest]]
     if(w > 0){
@@ -724,7 +743,7 @@ for(i in 1:nrow(BI_survey_data)){
       }
     }
   }
-  
+
   test_dat_mul <- rbind(test_dat_mul, lst)
 }
 rel_dat_mul <- data.frame(rel_dat_mul, row.names = NULL)
@@ -766,10 +785,10 @@ mul_plot_noBox2 <- function(inv, name, log, pred, classification, dir, orig){
   dv <- orig / pred
   z <- which(dv != 0)
   p2 <- ggplot() +
-    geom_point(data = NULL, 
+    geom_point(data = NULL,
                aes(x = inv[z], y = dv[z]), col = "red") +
     ggtitle(paste(dir, "w^(D) / w^(M) vs", name)) +
-    xlab(name) + ylab("w^(D) / w^(M)") + 
+    xlab(name) + ylab("w^(D) / w^(M)") +
     geom_hline(yintercept = 1, col="black") +
     scale_y_log10(limits = c(0.01, 100))
   if(log){
@@ -778,18 +797,18 @@ mul_plot_noBox2 <- function(inv, name, log, pred, classification, dir, orig){
   png(paste(dir, "/", name, "_", classification, ".png", sep = ""))
   print(p2)
   dev.off()
-  
+
   z2 <- which(dv == 0)
-  p <- ggplot() + 
-    geom_point(data=NULL, 
+  p <- ggplot() +
+    geom_point(data=NULL,
                aes(x=inv[z2], y=pred[z2], col="red")) +
     ggtitle(paste(dir, "w^(M) vs", name)) +
-    xlab(name) + ylab("w^(M)") + 
+    xlab(name) + ylab("w^(M)") +
     geom_hline(yintercept = 0, col="black")
   if(log){
     p <- p + scale_x_log10()
   }
-  
+
   png(paste(dir, "/", name, "_", classification, "_zero.png", sep = ""))
   print(p)
   dev.off()
@@ -807,15 +826,15 @@ orig <- c()
 for(i in 1:nrow(test_dat_mul)){
   row <- test_dat_mul[i,]
   N1 <- row$N1
-  
+
   j <- 1
   for(d in sort(centrals)){
     N2 <- row[[paste("N2.", d, sep="")]]
     t <- row[[paste("t.", d, sep="")]]
-    
+
     pred_mul_rs <- c(pred_mul_rs, pred_mul[i, j])
     orig <- c(orig, sub[i, j])
-    
+
     src_cor <- BI_survey_data[areaId==BI_survey_data[i,]$areaId, .(X, Y)]
     dest_cor <- loc2(d)
     dst <- dist(src_cor, dest_cor)
@@ -825,7 +844,7 @@ for(i in 1:nrow(test_dat_mul)){
     }
 
     dat <- rbind(dat, list(N1=N1,N2=N2,t=t, d=dst))
-    
+
     j <- j + 1
   }
 }
@@ -840,6 +859,10 @@ cor_plot_all("multinom", dat)
 ```
 
 # Results
+
+_What metrics are you using to determine best/worst results?_
+
+_The x-axes are different between the top and bottom rows, making it hard to compare the top to the bottom rows.  Can you change the titles of the plots to be more readable - you're using a code to describe these plots which I don't necessarily understand._
 
 So far, we have tried out Negative Binomial Regression, Zero Inflated
 Negative Binomial Regression, and Multinomial Regression. To evaluate
@@ -857,6 +880,16 @@ below:
 ### Zero Inflated Negative Binomial Regression Performance Plots
 
 <img src="zinf_dist_noCov_cutoff=0.png" title="A caption" alt="A caption" width="100%" />
+
+_Please explain the columns in this CSV file.  I do not know what these different grouped tables are or mean, or which models they correspond to.  I see that there's a label "ExpPow," which appears no where in this document.  Also, explain what the units for "cutoffs" are._
+
+_Please explain the gaps in this CSV file, what the errors are and where they come from_
+
+_Why is there only one AIC value for the multinomial regression?  You're fitting only one model here?_
+
+_I've brought this up a few times before: what is happening when you're using 240 as your cutoff?  Why is it that the AIC goes up while the residual sum goes down?  What's going on?_
+
+
 
 To see a complete summary of AIC and Sum of Residual Squares of each
 model at each cutoff, view the [summary.csv](./summary.csv)
