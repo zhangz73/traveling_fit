@@ -14,6 +14,7 @@ library(reshape2)
 library(stringr)
 library(pscl)
 library(nnet)
+library(ggpubr)
 ```
 
 ## Read data
@@ -32,13 +33,13 @@ Calculate the distance between two coordinates.
 ``` r
 dist <- function(src_cor, dest_cor){
   ###
-  # dist() is a function that calculates the geometric distance of a
+  # dist() is a function that calculates the geographic distance of a
   # given pair of source and destination locations
   # Inputs:
   #   src_cor: the coordinates of source location
   #   dest_cor: the coordinates of destination location
   # Outputs:
-  #   the geometric distance between these two locations
+  #   the geographic distance between these two locations
   ###
   
   return(sqrt((src_cor$X - dest_cor$X)^2 + (src_cor$Y - dest_cor$Y)^2))
@@ -283,37 +284,54 @@ value to that specified covariate.
 
 ``` r
 # Correlation plots
-cor_plot_noBox2 <- function(inv, name, log, model, classification, dir, dat){
-  inv <- as.numeric(inv)
-  dv <- as.numeric(dat$w) / model$fitted.values
-  z <- which(dv != 0)
+cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  z <- which(y != 0)
   p2 <- ggplot() +
     geom_point(data = NULL, 
-               aes(x = inv[z], y = dv[z]), col = "red") +
-    ggtitle(paste(dir, "w^(D) / w^(M) vs", name)) +
-    xlab(name) + ylab("w^(D) / w^(M)") + 
-    geom_hline(yintercept = 1, col="black") +
-    scale_y_log10(limits = c(0.01, 100))
-  if(log){
+               aes(x = x[z], y = y[z]), col = "red") +
+    ggtitle(paste(title, y_name, "vs", x_name)) +
+    xlab(x_name) + ylab(y_name) + 
+    geom_line(data = NULL, aes(x=x[z], y=exp[z]), col="black") +
+    scale_y_log10(limits = c(0.01, 100)) + 
+    theme(legend.position = "none")
     p2 <- p2 + scale_x_log10()
-  }
-  png(paste(dir, "/", name, "_", classification, ".png", sep = ""))
-  print(p2)
-  dev.off()
   
-  z2 <- which(dv == 0)
   p <- ggplot() + 
     geom_point(data=NULL, 
-               aes(x=inv[z2], y=model$fitted.values[z2], col="red")) +
-    ggtitle(paste(dir, "w^(M) vs", name)) +
-    xlab(name) + ylab("w^(M)") + 
-    geom_hline(yintercept = 0, col="black")
-  if(log){
-    p <- p + scale_x_log10()
-  }
+               aes(x=x, y=res, col="red")) +
+    ggtitle(paste(title, "residual plot" , x_name)) +
+    xlab(x_name) + ylab("residual plot") + 
+    geom_hline(yintercept = 0, col="black") +
+    theme(legend.position = "none")
+
+  return(list(ratio_plot = p2, residual_plot = p))
+}
+
+cor_plot_all <- function(title, dat){
+  p1 <- cor_plot_single(dat$d, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "geographic distance",
+                        "w^{(D)} / w^{(M)}", title)
+  p2 <- cor_plot_single(dat$N1, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "source population",
+                        "w^{(D)} / w^{(M)}", title)
+  p3 <- cor_plot_single(dat$N2, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "destination population",
+                        "w^{(D)} / w^{(M)}", title)
+  p4 <- cor_plot_single(dat$t, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "travel time",
+                        "w^{(D)} / w^{(M)}", title)
+  g1 <- ggarrange(p1$ratio_plot, p2$ratio_plot, p3$ratio_plot,    
+                  p4$ratio_plot, ncol = 4, 
+                  labels = c("A", "B", "C", "D"))
+  g2 <- ggarrange(p1$residual_plot, p2$residual_plot, p3$residual_plot, 
+                  p4$residual_plot, ncol = 4, 
+                  labels = c("A", "B", "C", "D"))
+  g <- ggarrange(g1, g2, nrow = 2)
   
-  png(paste(dir, "/", name, "_", classification, "_zero.png", sep = ""))
-  print(p)
+  png(filename = paste(title, ".png", sep=""), width = 1200, height = 600)
+  print(g)
   dev.off()
 }
 ```
@@ -326,8 +344,13 @@ distance between each pair (areaId, destination name).
 
 ``` r
 gravity_dat <- c()
+
+# The first for-loop iterate through all possible source locations
+# which are areaIds in the BI_survey_data
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
+  
+  # The second for-loop iterate through all possible destinations
   for(dest in centrals){
     w <- C(dat$areaId, dest)
     N1 <- sum(BI_survey_data[areaId==dat$areaId, pop])
@@ -391,13 +414,15 @@ plot_cutoff <- function(cutoff, base_dir){
   }
 
   if(cutoff <= 0){
-    dir_name <- paste(base_dir, "/no_cutoff", sep = "")
-    dir.create(dir_name)
+    #dir_name <- paste(base_dir, "/no_cutoff", sep = "")
+    #dir.create(dir_name)
     
-    cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
+    dat <- cbind(dat, list(pred=nb$fitted.values))
+    for(i in 1:ncol(dat)){
+      dat[,i] <- unlist(dat[,i])
+    }
+    cor_plot_all(paste("zinf_dist_noCov_cutoff=", cutoff, sep=""), dat)
+    
     return(list(nb=nb, nb2=list(fitted.values=0, aic=8, loglik=0), f1=y_nb, f2=0))
     #return(c(8-2*nb$loglik, 8, sum(nb$residuals^2), 0))
   }
@@ -411,18 +436,15 @@ plot_cutoff <- function(cutoff, base_dir){
   #nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2)
   nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+d_nb2, dist="negbin")
 
-  dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
-  dir.create(dir_name)
+  #dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
+  #dir.create(dir_name)
   
-  cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
-  
-  cor_plot_noBox2(dat2$N1, "population at origin", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$N2, "population at destination", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$d, "distance", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$t, "travel time", T, nb2, "near", dir_name, dat2)
+  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+                                                     nb2$fitted.values)))
+  for(i in 1:ncol(dat_all)){
+      dat_all[,i] <- unlist(dat_all[,i])
+    }
+  cor_plot_all(paste("[model]_noCov_cutoff=", cutoff, sep=""), dat_all)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -436,11 +458,15 @@ the results into a CSV file.
 
 ``` r
 aics <- c()
-cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200, 220, 240) * 1000
+cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
 base_dir <- "dist_updated/zinf_dist_noCov_zeroincld"
 
+# The for-loop is to iterate through all possible cutoffs for
+# geographic distance or for travel times, and then fit the
+# models based on the cutoff, generate correlation plots, and
+# obtain the AIC and Sum or Residual Squares
 for(c in cutoffs){
     res <- plot_cutoff(c, base_dir)
     aic1 <- 8 - 2 * res$nb$loglik
@@ -451,13 +477,19 @@ for(c in cutoffs){
 }
 
 aics
-aics_summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
-colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
+
+# The "summary" is a matrix that holds the AIC and Sum of residual
+# squares information at each cutoff.
+summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
+colnames(summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
-aics_summary
+summary
 bname <- str_replace_all(base_dir, "/", "_")
-write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
+
+# write the summary into a CSV file to store the AIC and SSR results
+# of different cutoffs for the model.
+write.csv(summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
 ```
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression With Additional Covariates (Indicators for Ad2 and travel time or geographic distance between source and Malabo)
@@ -488,6 +520,15 @@ for(i in 1:nrow(BI_survey_data)){
     t <- tt(dat$areaId, dest)
     t2 <- tt(dat$areaId, "ti_mal")
     
+    # create indicators for the ad2
+    # ind is initialzed with a list, where each of the 7 locations
+    # is mapped to 0
+    # Then, query the ad2 from the BI_survey_data. Notice that there
+    # is only 1 row for each of the areaId, so by specifying
+    # areaId==[the areaId of current data], we are guaranteed to
+    # find the row of this data, and thus obtain its ad2
+    # Finally, set the ind[ad2] to be 1, so that we have created
+    # a list of indicators for each of the 7 locations
     ind <- list(Peri = 0, Malabo = 0, Baney = 0, Luba = 0,
                 Riaba = 0, Moka = 0, Ureka = 0)
     ad2 <- unique(BI_survey_data[areaId==dat$areaId, ad2])
@@ -543,10 +584,12 @@ plot_cutoff_covs <- function(cutoff, base_dir){
     dir_name <- paste(base_dir, "/no_cutoff", sep = "")
     dir.create(dir_name)
     
-    cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
+    dat <- cbind(dat, list(pred=nb$fitted.values))
+    for(i in 1:ncol(dat)){
+      dat[,i] <- unlist(dat[,i])
+    }
+    cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat)
+    
     return(list(nb=nb, nb2=list(fitted.values=0, aic=24, loglik=0), f1=y_nb, f2=0))
     #return(c(nb$aic, 0, sum(nb$residuals^2), 0))
     #return(c(24-nb$loglik, 0, sum(nb$residuals^2), 0))
@@ -576,15 +619,12 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
   dir.create(dir_name)
   
-  cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
-  
-  cor_plot_noBox2(dat2$N1, "population at origin", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$N2, "population at destination", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$d, "distance", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$t, "travel time", T, nb2, "near", dir_name, dat2)
+  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+                                                     nb2$fitted.values)))
+  for(i in 1:ncol(dat_all)){
+      dat_all[,i] <- unlist(dat_all[,i])
+    }
+  cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat_all)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -795,12 +835,28 @@ base_dir <- "dist_updated"
 dir_name <- paste(base_dir, "/multinomial2", sep = "")
 dir.create(dir_name)
 
-mul_plot_noBox2(dat$N1, "population at origin", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$N2, "population at destination", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$d, "distance", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$t, "distance", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
+dat <- cbind(dat, list(w=orig, pred=pred_mul_rs))
+cor_plot_all("multinom", dat)
 ```
+
+# Results
+
+So far, we have tried out Negative Binomial Regression, Zero Inflated
+Negative Binomial Regression, and Multinomial Regression. To evaluate
+their performance, I plotted ratio plots (data / fitted.values) and
+residual plots (data - fitted.values) for each of the covariate for each
+model. The plots for the best model (multinomial regression), and the
+worst model (negative binomial using geographic distance with no cutoff
+on distance) are shown
+below:
+
+### Multinomial Regression Performance Plots
+
+<img src="multinom.png" title="A caption" alt="A caption" width="100%" />
+
+### Zero Inflated Negative Binomial Regression Performance Plots
+
+<img src="zinf_dist_noCov_cutoff=0.png" title="A caption" alt="A caption" width="100%" />
+
+To see a complete summary of AIC and Sum of Residual Squares of each
+model at each cutoff, view the [summary.csv](./summary.csv)

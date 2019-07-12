@@ -19,6 +19,7 @@ library(reshape2)
 library(stringr)
 library(pscl)
 library(nnet)
+library(ggpubr)
 ```
 
 ## Read data
@@ -33,6 +34,16 @@ BI_survey_data <- data.table(BI_survey_data)
 Calculate the distance between two coordinates.
 ```{r, eval=FALSE}
 dist <- function(src_cor, dest_cor){
+  ###
+  # dist() is a function that calculates the geographic distance of a
+  # given pair of source and destination locations
+  # Inputs:
+  #   src_cor: the coordinates of source location
+  #   dest_cor: the coordinates of destination location
+  # Outputs:
+  #   the geographic distance between these two locations
+  ###
+  
   return(sqrt((src_cor$X - dest_cor$X)^2 + (src_cor$Y - dest_cor$Y)^2))
 }
 ```
@@ -40,14 +51,37 @@ dist <- function(src_cor, dest_cor){
 Get the population of a given location
 ```{r, eval=FALSE}
 pop <- function(str){
+  ###
+  # pop() is a function that gets the population of a given location
+  # Inputs:
+  #   str: the string indicating the location, which is formatted like
+  #        "ti_ban"
+  # Outputs
+  #   the population of the given location
+  ###
+  
+  # convert the string format (ex. from "ti_ban" to "Baney")
+  # notice that "ti_mal" indicates traveling to Peri or Malabo
+  # so for "ti_mal", the str will be converted to 
+  # a vector ("Peri", "Malabo"), which will be explained in more
+  # details in the documentation for cvt()
   str <- cvt(str)
+  
+  # if the destination is the mainland of equatorial guinea, then
+  # return its population directly
   if(length(str) == 1 && str=="EG_Mainland"){
     return(1129996)
   }
+  
+  # if the destination is somewhere in the bioko island, then the
+  # population of that location is calculated by summing over
+  # population in all areaIds that belong to that location
   res <- c()
   for(s in str){
     res <- c(res, BI_survey_data[ad2==s, pop])
   }
+  
+  # if the input str is invalid, then return 0
   if(length(res) == 0){
     return(0)
   }
@@ -58,6 +92,18 @@ pop <- function(str){
 Convert the strings that indicate travel destinations in the column names to the name of that location. For instance, "ti_ban" to "Baney".
 ```{r, eval=FALSE}
 cvt <- function(str){
+  ###
+  # cvt() is a function that converts a string to a more readable format
+  # for instance, it will convert "ti_ban" to "Baney"
+  # For "ti_mal", since it indicates traveling to Malabo and Peri, this 
+  # function will convert it to a vector ("Malabo", "Peri")
+  # Inputs:
+  #   str: the string to be converted, which is formatted as "ti_ban"
+  # Outputs:
+  #   the more readable version of the string
+  #   return NULL for illegal input
+  ###
+  
   if(str == "ti_ban"){
     return("Baney")
   } else if(str == "ti_mal"){
@@ -80,13 +126,28 @@ cvt <- function(str){
 Get the coordinates of a location. The coordinates is looked up from wikipedia, and the coordinates adopted are at the center of each location.
 ```{r, eval=FALSE}
 loc2 <- function(str){
+  ###
+  # loc2() is a function that returns the coordinates of a given location
+  # Inputs:
+  #   str: the string that stores the destination location to lookup
+  # Outputs:
+  #   a list, with X and Y coordinates of the location
+  ###
+  
+  # convert the input string into a more readable format
   str <- cvt(str)
+  
   if(length(str) == 1 && str == "EG_Mainland"){
     return(list(X = 583415.41, Y = 204498.92))
   }
+  
+  # if the input is illegal, return NULL
   if(length(str) == 0){
     return(NULL)
   }
+  
+  # if the destinations are Malabo and Peri, return the center
+  # of these two locations
   if(length(str) == 2){
     return(list(X = 474872, Y = 414725))
   }
@@ -104,19 +165,52 @@ loc2 <- function(str){
 }
 ```
 
-Get the travel time from a source location (given by areaID) to a destination location (given by its name). The travel times are obtained from google map. Notice that for each offland travels, people have to travel to Malabo first before they travel offland to the mainland of Equatorial Guinea, so the travel time from that location to the mainland equals to the time from Malabo to the mainland (Bata city) plus the travel time from the source location to Malabo.  
+Get the travel time from a source location (given by areaID) to a destination location (given by its name). The travel time from Malabo to the mainland of equatorial guinea is obtained from google map. Notice that for each offland travels, people have to travel to Malabo first before they travel offland to the mainland of Equatorial Guinea, so the travel time from that location to the mainland equals to the time from Malabo to the mainland (Bata city) plus the travel time from the source location to Malabo.  
 One thing to be aware of is that we have travel time from each areaId to each areaId, but we only need the travel time from an areaId to one of the 7 destinations (Baney, Malabo, ...), so the travel time is calculated on the average time of the source areaId to all other areaIds that belong to the destination.
 ```{r, eval=FALSE}
 tt <- function(id_src, str_dest){
+  ###
+  # tt() is a function that calculates the travel time between a
+  # source location to a destination location
+  # Inputs:
+  #   id_src: the areaId of the source location
+  #   str_dest: the name (formated as "ti_ban") of the 
+  #             destination location
+  # Outputs:
+  #   the travel time between these two locations
+  #
+  # Notice that the only information available to us are the travel time
+  # between areaId and areaId, while we need to calculate the travel
+  # time between areaId and a location (which contains multiple areaIds).
+  # So the travel time is calculated based on the average travel time
+  # between the areaId of source location and all other areaIds that
+  # belong to the destination location
+  ###
+  
+  # Conver the name of destination to a more readable version
   str_dest <- cvt(str_dest)
+  
+  # If the destination is the mainland of equatorial guinea, then
+  # people have to travel from their source location to Malabo first,
+  # and then take airplanes from Malabo to the mainland (the Bata City)
+  # It takes them 140 minutes to travel from Malabo to the Bata City, 
+  # which includes the waiting time at the airport
   if(length(str_dest) == 1 && str_dest == "EG_Mainland"){
     return(140 + tt(id_src, "ti_mal"))
   }
+  
+  # return NULL for illegal inputs
   if(length(str_dest) == 0){
     return(NULL)
   }
+  
+  # Otherwise, of the travel destination is somewhere inside the
+  # Bioko island, then return the average travel time between the
+  # source areaId to the destination
   sum <- 0
   cnt <- 0
+  # The for-loop here is to handle the case where str_dest may be
+  # a vector ("Malabo", "Peri")
   for(s in str_dest){
     areaID <- unique(BI_survey_data[ad2==s, areaId])
     cnt <- cnt + length(areaID)
@@ -139,7 +233,18 @@ centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria",
 Fetch the commuting flow from a given areaId to a given destination from the BI_survey_data.
 ```{r, eval=FALSE}
 C <- function(src_id, dest){
+  ###
+  # C() is a function that gets the commuting flow between the given
+  # source and destination
+  # Inputs:
+  #   src_id: the areaId of the source location
+  #   dest: the name of the destination location (formatted as "ti_ban")
+  # Outputs:
+  #   the commuting flow between these two locations
+  ###
   res <- BI_survey_data[areaId==src_id,][[dest]]
+  
+  # return 0 if the src_id is not found
   if(length(res) == 0){
     return(0)
   }
@@ -148,40 +253,59 @@ C <- function(src_id, dest){
 ```
 
 # Negative Binomial Regressions
+### The Negative Binomial Regression will be displayed in two parts: ordinary Negative Binomial Regression, and zero inflated Negative Binomial Regression. The cor_plot_noBox2() function below is a helper function that can generate correlation plots to visualize either of these models. 
+
 A helper function to obtain the correlation plots between the ratio of true value to fitted value and one of the specified covariates (source population, destination population, distance, and travel time). If the true values are 0, then the plots show the relations between the fitted value to that specified covariate.
 ```{r}
 # Correlation plots
-cor_plot_noBox2 <- function(inv, name, log, model, classification, dir, dat){
-  inv <- as.numeric(inv)
-  dv <- as.numeric(dat$w) / model$fitted.values
-  z <- which(dv != 0)
+cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  z <- which(y != 0)
   p2 <- ggplot() +
     geom_point(data = NULL, 
-               aes(x = inv[z], y = dv[z]), col = "red") +
-    ggtitle(paste(dir, "w^(D) / w^(M) vs", name)) +
-    xlab(name) + ylab("w^(D) / w^(M)") + 
-    geom_hline(yintercept = 1, col="black") +
-    scale_y_log10(limits = c(0.01, 100))
-  if(log){
+               aes(x = x[z], y = y[z]), col = "red") +
+    ggtitle(paste(title, y_name, "vs", x_name)) +
+    xlab(x_name) + ylab(y_name) + 
+    geom_line(data = NULL, aes(x=x[z], y=exp[z]), col="black") +
+    scale_y_log10(limits = c(0.01, 100)) + 
+    theme(legend.position = "none")
     p2 <- p2 + scale_x_log10()
-  }
-  png(paste(dir, "/", name, "_", classification, ".png", sep = ""))
-  print(p2)
-  dev.off()
   
-  z2 <- which(dv == 0)
   p <- ggplot() + 
     geom_point(data=NULL, 
-               aes(x=inv[z2], y=model$fitted.values[z2], col="red")) +
-    ggtitle(paste(dir, "w^(M) vs", name)) +
-    xlab(name) + ylab("w^(M)") + 
-    geom_hline(yintercept = 0, col="black")
-  if(log){
-    p <- p + scale_x_log10()
-  }
+               aes(x=x, y=res, col="red")) +
+    ggtitle(paste(title, "residual plot" , x_name)) +
+    xlab(x_name) + ylab("residual plot") + 
+    geom_hline(yintercept = 0, col="black") +
+    theme(legend.position = "none")
+
+  return(list(ratio_plot = p2, residual_plot = p))
+}
+
+cor_plot_all <- function(title, dat){
+  p1 <- cor_plot_single(dat$d, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "geographic distance",
+                        "w^{(D)} / w^{(M)}", title)
+  p2 <- cor_plot_single(dat$N1, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "source population",
+                        "w^{(D)} / w^{(M)}", title)
+  p3 <- cor_plot_single(dat$N2, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "destination population",
+                        "w^{(D)} / w^{(M)}", title)
+  p4 <- cor_plot_single(dat$t, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "travel time",
+                        "w^{(D)} / w^{(M)}", title)
+  g1 <- ggarrange(p1$ratio_plot, p2$ratio_plot, p3$ratio_plot,    
+                  p4$ratio_plot, ncol = 4, 
+                  labels = c("A", "B", "C", "D"))
+  g2 <- ggarrange(p1$residual_plot, p2$residual_plot, p3$residual_plot, 
+                  p4$residual_plot, ncol = 4, 
+                  labels = c("A", "B", "C", "D"))
+  g <- ggarrange(g1, g2, nrow = 2)
   
-  png(paste(dir, "/", name, "_", classification, "_zero.png", sep = ""))
-  print(p)
+  png(filename = paste(title, ".png", sep=""), width = 1200, height = 600)
+  print(g)
   dev.off()
 }
 ```
@@ -190,8 +314,13 @@ cor_plot_noBox2 <- function(inv, name, log, model, classification, dir, dat){
 Construct a new dataframe, gravity_dat, that stores the commuting flow, source population, destination population, travel time, and geographic distance between each pair (areaId, destination name).
 ```{r, eval=FALSE}
 gravity_dat <- c()
+
+# The first for-loop iterate through all possible source locations
+# which are areaIds in the BI_survey_data
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
+  
+  # The second for-loop iterate through all possible destinations
   for(dest in centrals){
     w <- C(dat$areaId, dest)
     N1 <- sum(BI_survey_data[areaId==dat$areaId, pop])
@@ -239,13 +368,15 @@ plot_cutoff <- function(cutoff, base_dir){
   }
 
   if(cutoff <= 0){
-    dir_name <- paste(base_dir, "/no_cutoff", sep = "")
-    dir.create(dir_name)
+    #dir_name <- paste(base_dir, "/no_cutoff", sep = "")
+    #dir.create(dir_name)
     
-    cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
+    dat <- cbind(dat, list(pred=nb$fitted.values))
+    for(i in 1:ncol(dat)){
+      dat[,i] <- unlist(dat[,i])
+    }
+    cor_plot_all(paste("zinf_dist_noCov_cutoff=", cutoff, sep=""), dat)
+    
     return(list(nb=nb, nb2=list(fitted.values=0, aic=8, loglik=0), f1=y_nb, f2=0))
     #return(c(8-2*nb$loglik, 8, sum(nb$residuals^2), 0))
   }
@@ -259,18 +390,15 @@ plot_cutoff <- function(cutoff, base_dir){
   #nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2)
   nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+d_nb2, dist="negbin")
 
-  dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
-  dir.create(dir_name)
+  #dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
+  #dir.create(dir_name)
   
-  cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
-  
-  cor_plot_noBox2(dat2$N1, "population at origin", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$N2, "population at destination", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$d, "distance", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$t, "travel time", T, nb2, "near", dir_name, dat2)
+  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+                                                     nb2$fitted.values)))
+  for(i in 1:ncol(dat_all)){
+      dat_all[,i] <- unlist(dat_all[,i])
+    }
+  cor_plot_all(paste("[model]_noCov_cutoff=", cutoff, sep=""), dat_all)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -281,11 +409,15 @@ plot_cutoff <- function(cutoff, base_dir){
 This chunk of code will calculate the AIC and Sum of Residual Square for each cutoff value of geographic distance or travel time, and then write the results into a CSV file.
 ```{r, eval=FALSE}
 aics <- c()
-cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200, 220, 240) * 1000
+cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
 base_dir <- "dist_updated/zinf_dist_noCov_zeroincld"
 
+# The for-loop is to iterate through all possible cutoffs for
+# geographic distance or for travel times, and then fit the
+# models based on the cutoff, generate correlation plots, and
+# obtain the AIC and Sum or Residual Squares
 for(c in cutoffs){
     res <- plot_cutoff(c, base_dir)
     aic1 <- 8 - 2 * res$nb$loglik
@@ -296,13 +428,19 @@ for(c in cutoffs){
 }
 
 aics
-aics_summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
-colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
+
+# The "summary" is a matrix that holds the AIC and Sum of residual
+# squares information at each cutoff.
+summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
+colnames(summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
-aics_summary
+summary
 bname <- str_replace_all(base_dir, "/", "_")
-write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
+
+# write the summary into a CSV file to store the AIC and SSR results
+# of different cutoffs for the model.
+write.csv(summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
 ```
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression With Additional Covariates (Indicators for Ad2 and travel time or geographic distance between source and Malabo)
@@ -328,6 +466,15 @@ for(i in 1:nrow(BI_survey_data)){
     t <- tt(dat$areaId, dest)
     t2 <- tt(dat$areaId, "ti_mal")
     
+    # create indicators for the ad2
+    # ind is initialzed with a list, where each of the 7 locations
+    # is mapped to 0
+    # Then, query the ad2 from the BI_survey_data. Notice that there
+    # is only 1 row for each of the areaId, so by specifying
+    # areaId==[the areaId of current data], we are guaranteed to
+    # find the row of this data, and thus obtain its ad2
+    # Finally, set the ind[ad2] to be 1, so that we have created
+    # a list of indicators for each of the 7 locations
     ind <- list(Peri = 0, Malabo = 0, Baney = 0, Luba = 0,
                 Riaba = 0, Moka = 0, Ureka = 0)
     ad2 <- unique(BI_survey_data[areaId==dat$areaId, ad2])
@@ -380,10 +527,12 @@ plot_cutoff_covs <- function(cutoff, base_dir){
     dir_name <- paste(base_dir, "/no_cutoff", sep = "")
     dir.create(dir_name)
     
-    cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-    cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
+    dat <- cbind(dat, list(pred=nb$fitted.values))
+    for(i in 1:ncol(dat)){
+      dat[,i] <- unlist(dat[,i])
+    }
+    cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat)
+    
     return(list(nb=nb, nb2=list(fitted.values=0, aic=24, loglik=0), f1=y_nb, f2=0))
     #return(c(nb$aic, 0, sum(nb$residuals^2), 0))
     #return(c(24-nb$loglik, 0, sum(nb$residuals^2), 0))
@@ -413,15 +562,12 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
   dir.create(dir_name)
   
-  cor_plot_noBox2(dat$N1, "population at origin", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$N2, "population at destination", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$d, "distance", T, nb, "far", dir_name, dat)
-  cor_plot_noBox2(dat$t, "travel time", T, nb, "far", dir_name, dat)
-  
-  cor_plot_noBox2(dat2$N1, "population at origin", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$N2, "population at destination", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$d, "distance", T, nb2, "near", dir_name, dat2)
-  cor_plot_noBox2(dat2$t, "travel time", T, nb2, "near", dir_name, dat2)
+  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+                                                     nb2$fitted.values)))
+  for(i in 1:ncol(dat_all)){
+      dat_all[,i] <- unlist(dat_all[,i])
+    }
+  cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat_all)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -612,13 +758,21 @@ base_dir <- "dist_updated"
 dir_name <- paste(base_dir, "/multinomial2", sep = "")
 dir.create(dir_name)
 
-mul_plot_noBox2(dat$N1, "population at origin", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$N2, "population at destination", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$d, "distance", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
-mul_plot_noBox2(dat$t, "distance", T, pred_mul_rs, 
-                "multinom", dir_name, orig)
+dat <- cbind(dat, list(w=orig, pred=pred_mul_rs))
+cor_plot_all("multinom", dat)
 ```
 
+# Results
+So far, we have tried out Negative Binomial Regression, Zero Inflated Negative Binomial Regression, and Multinomial Regression. To evaluate their performance, I plotted ratio plots (data / fitted.values) and residual plots (data - fitted.values) for each of the covariate for each model. The plots for the best model (multinomial regression), and the worst model (negative binomial using geographic distance with no cutoff on distance) are shown below:  
+
+### Multinomial Regression Performance Plots
+```{r pressure, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("multinom.png")
+```
+
+### Zero Inflated Negative Binomial Regression Performance Plots
+```{r, echo=FALSE, fig.cap="A caption", out.width = '100%'}
+knitr::include_graphics("zinf_dist_noCov_cutoff=0.png")
+```
+
+To see a complete summary of AIC and Sum of Residual Squares of each model at each cutoff, view the [summary.csv](./summary.csv)
