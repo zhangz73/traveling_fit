@@ -1,0 +1,8 @@
+cutoffs,"The boundary line on geographic distance or travel time, where two models are adopted on its two sides. If we are using poisson regression, negative binomial regression, or zero-inflated negative binomial regression, then we use exponential dependence on distance/time for near trips, and power dependence for far trips. Unit for cutoffs on distance is km. Unit for cutoffs on time is minutes."
+AIC Far,The AIC of models for far trips.
+AIC Near,The AIC of models for near trips.
+Residual Far,The sum of residual squares for far trips.
+Residual Near,The sum of residual squares for near trips.
+AIC Sum,The AIC of models on the whole dataset.
+Residual Sum,The sum of residual squares for the whole dataset.
+program crashed,"The package for model fitting in R run into singularities, where the hessian matrix is no longer invertible, and the program halts."

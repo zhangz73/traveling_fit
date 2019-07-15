@@ -4,6 +4,23 @@ Multinomial Regression On Traveling Model
 Zhanhao Zhang
 7/6/2019
 
+## Models to explore
+
+We are going to explore several different models on the traveling data.
+There are several variations for the models:  
+Type of model: poisson regression, negative binomial regression,
+zero-inflated negative binomial regression, multinomial regression.  
+Representation of distance: geographic distance or travel time between
+source and destination.  
+Whether additional covariates are added: if added, then the added
+covariates are indicators for ad2 and geographic distance or travel time
+from source location to Malabo.  
+Cutoffs: a cutoff on geographic distance or travel time where different
+models are adopted and data are fitted separately on the two sides of
+the cutoff boundary. We assume exponential dependence on geographic
+distance or travel time for near trips, while power dependence for far
+trips.
+
 ## Packages needed
 
 ``` r
@@ -25,6 +42,27 @@ colnames <- colnames(data)
 BI_survey_data <- read.csv("BI_survey_data.csv", header = T)
 BI_survey_data <- data.table(BI_survey_data)
 ```
+
+## Cleaned data for each model
+
+To fit the data into each model, we have to clean the data first. The
+cleaned data are saved as \[name\].csv, where \[name\] is the same as
+their dataframes’ names.  
+rel\_gravity\_dat.csv: rel\_gravity\_dat, to feed into poisson
+regression, negative binomial regression, and zero-inflated negative
+binomial regression without additional covariates.  
+rel\_gravity\_dat\_covs.csv: rel\_gravity\_dat\_covs, to feed into
+poisson regression, negative binomial regression, and zero-inflated
+negative binomial regression with additional covariates (indicators for
+ad2 and geometric distance/travel time from source location to
+Malabo).  
+rel\_dat\_mul.csv: rel\_dat\_mul, to feed into multinomial regression (a
+dataframe that represents commuting flow w by duplicating the row by w
+times).  
+test\_dat\_mul.csv: test\_dat\_mul, to make it easier for prediction and
+get the sum of residuals (a dataframe that represents commuting flow w
+by adding an additional column, w\_total, in each row to indicate the
+total commuting flow out of each given areaId).
 
 ## Helper functions
 
@@ -68,8 +106,13 @@ pop <- function(str){
   
   # if the destination is the mainland of equatorial guinea, then
   # return its population directly
+  # this is calculated by first getting the population of whole
+  # Equatorial Guinea for year 2015-2017 from the IHME's database, 
+  # take the average of these three, and subtract them by the 
+  # population of the Bioko island, which is the sum of population 
+  # of all areaIds in the BI_survey_data
   if(length(str) == 1 && str=="EG_Mainland"){
-    return(1129996)
+    return(1071785)
   }
   
   # if the destination is somewhere in the bioko island, then the
@@ -166,6 +209,34 @@ loc2 <- function(str){
   } else if(str == "Ureka"){
     return(list(X = 446303, Y = 361082))
   }
+}
+```
+
+An alternative way to figure out the coordinates for each location. It
+is calculated based on the weighted average of coordinates of all
+areaIds that belong to the location, where the weight is the population
+of those areaIds.
+
+``` r
+loc <- function(str){
+  str <- cvt(str)
+  if(length(str) == 1 && str == "EG_Mainland"){
+    return(list(X = 583415.41, Y = 204498.92))
+  }
+  if(length(str) == 0){
+    return(NULL)
+  }
+  return(loc_helper(str))
+}
+
+loc_helper <- function(str){
+  res <- c()
+  for(s in str){
+    res <- rbind(res, BI_survey_data[ad2==s, .(X, Y, pop)])
+  }
+  denom <- sum(res$pop)
+  return(list(X = sum(res$X * res$pop) / denom, 
+              Y = sum(res$Y * res$pop) / denom))
 }
 ```
 
@@ -285,6 +356,24 @@ value to that specified covariate.
 ``` r
 # Correlation plots
 cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
+  ###
+  # cor_plot_single() is a function for plotting a ratio plot
+  #                   and a residual plot for a model with respect
+  #                   to a given covariate
+  # Inputs:
+  #   x: the given covariate to be plotted against
+  #   y: the y-axis, in most cases, it is w^{(D)} / w^{(M)}
+  #   res: the residual, which is w^{(D)} - w^{(M)}
+  #   exp: the expected value of the ratio plot, in most cases,
+  #        it is a horizontal line y = 1
+  #   x_name: the name for x-axis
+  #   y_name: the name for y-axis
+  #   title: the name of the title of the plots
+  # Outputs:
+  #   A list of ggplot() objects, containing one ratio plot and one
+  #   residual plot
+  ###
+  
   x <- as.numeric(x)
   y <- as.numeric(y)
   z <- which(y != 0)
@@ -304,12 +393,23 @@ cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
     ggtitle(paste(title, "residual plot" , x_name)) +
     xlab(x_name) + ylab("residual plot") + 
     geom_hline(yintercept = 0, col="black") +
-    theme(legend.position = "none")
+    theme(legend.position = "none") +
+    scale_x_log10()
 
   return(list(ratio_plot = p2, residual_plot = p))
 }
 
-cor_plot_all <- function(title, dat){
+cor_plot_all <- function(title, dat, dir){
+  ###
+  # cor_plot_all() is a function to generate all plots for a model
+  # 4 ratio plots and 4 residual plots, arranged in a 2x4 matrix
+  # Inputs:
+  #   title: describes the name and features of the model, which is
+  #          to be used in the title of the plots and the filename
+  #          of the generated image
+  #   dat: a dataframe in the form of (w, d, N1, N2, t, pred), an
+  #        auxilary data structure for the plotting
+  ###
   p1 <- cor_plot_single(dat$d, dat$w / dat$pred, dat$w - dat$pred,
                         rep(1, length(dat$d)), "geographic distance",
                         "w^{(D)} / w^{(M)}", title)
@@ -330,7 +430,7 @@ cor_plot_all <- function(title, dat){
                   labels = c("A", "B", "C", "D"))
   g <- ggarrange(g1, g2, nrow = 2)
   
-  png(filename = paste(title, ".png", sep=""), width = 1200, height = 600)
+  png(filename = paste(dir, ".png", sep=""), width = 1200, height = 600)
   print(g)
   dev.off()
 }
@@ -340,7 +440,19 @@ cor_plot_all <- function(title, dat){
 
 Construct a new dataframe, gravity\_dat, that stores the commuting flow,
 source population, destination population, travel time, and geographic
-distance between each pair (areaId, destination name).
+distance between each pair (areaId, destination name).  
+Inputs of the gravity\_dat:  
+   w: commuting flow  
+   N1: population at source location  
+   N2: population at destination location  
+   d: geographic distance  
+   t: travel time  
+Notice that the gravity\_dat includes both geographic distance and
+travel time, while during the model fitting, it will use only one of
+them. The reason to include both is to make it easier to assess the
+model performance by selecting either geographic distance or travel time
+in an easy manner, without having to go through the whole data cleaning
+process again.
 
 ``` r
 gravity_dat <- c()
@@ -356,7 +468,7 @@ for(i in 1:nrow(BI_survey_data)){
     N1 <- sum(BI_survey_data[areaId==dat$areaId, pop])
     N2 <- pop(dest)
     src_cor <- BI_survey_data[areaId==dat$areaId, .(X, Y)]
-    dest_cor <- loc2(dest)
+    dest_cor <- loc(dest)
     d <- dist(src_cor, dest_cor)
     if(dest == "to"){
       d <- dist(src_cor, loc2("ti_mal"))
@@ -394,9 +506,9 @@ always be the same. Without removing this feature, the zero inflated
 model will crash.
 
 ``` r
-plot_cutoff <- function(cutoff, base_dir){
-  rel_gravity_dat3 <- rel_gravity_dat[rel_gravity_dat$d > cutoff,]
-  rel_gravity_dat4 <- rel_gravity_dat[rel_gravity_dat$d <= cutoff,]
+plot_cutoff <- function(cutoff, base_dir, model){
+  rel_gravity_dat3 <- rel_gravity_dat[rel_gravity_dat$t > cutoff,]
+  rel_gravity_dat4 <- rel_gravity_dat[rel_gravity_dat$t <= cutoff,]
   
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
@@ -405,14 +517,16 @@ plot_cutoff <- function(cutoff, base_dir){
   N2_nb <- log(as.numeric(dat$N2))
   d_nb <- log(as.numeric(dat$d))
   t_nb <- log(as.numeric(dat$t))
-  #nb <- glm.nb(y_nb~N1_nb+N2_nb+t_nb)
-  nb <- NA
-  if(cutoff <= 60000){
-    nb <- zeroinfl(y_nb~N1_nb+N2_nb+d_nb, dist="negbin")
-  } else{
-    nb <- zeroinfl(y_nb~N1_nb+d_nb, dist="negbin")
-  }
-
+  nb <- glm.nb(y_nb~N1_nb+N2_nb+t_nb)
+  #nb <- NA
+  #if(cutoff <= 60000){
+   # nb <- zeroinfl(y_nb~N1_nb+N2_nb+t_nb, dist="negbin")
+  #} else{
+   # nb <- zeroinfl(y_nb~N1_nb+t_nb, dist="negbin")
+  #}
+  
+  dir <- paste(base_dir, model, "_noCov_cutoff=", cutoff, sep="")
+  
   if(cutoff <= 0){
     #dir_name <- paste(base_dir, "/no_cutoff", sep = "")
     #dir.create(dir_name)
@@ -421,7 +535,8 @@ plot_cutoff <- function(cutoff, base_dir){
     for(i in 1:ncol(dat)){
       dat[,i] <- unlist(dat[,i])
     }
-    cor_plot_all(paste("zinf_dist_noCov_cutoff=", cutoff, sep=""), dat)
+    cor_plot_all(paste(model, "_noCov_cutoff=", cutoff, "\n", sep=""), dat,
+                 dir)
     
     return(list(nb=nb, nb2=list(fitted.values=0, aic=8, loglik=0), f1=y_nb, f2=0))
     #return(c(8-2*nb$loglik, 8, sum(nb$residuals^2), 0))
@@ -433,18 +548,19 @@ plot_cutoff <- function(cutoff, base_dir){
   N2_nb2 <- log(as.numeric(dat2$N2))
   d_nb2 <- as.numeric(dat2$d)
   t_nb2 <- as.numeric(dat2$t)
-  #nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2)
-  nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+d_nb2, dist="negbin")
+  nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2)
+  #nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+t_nb2, dist="negbin")
 
   #dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
   #dir.create(dir_name)
   
-  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+  dat_all <- cbind(rbind(dat, dat2), list(pred=c(nb$fitted.values,
                                                      nb2$fitted.values)))
   for(i in 1:ncol(dat_all)){
       dat_all[,i] <- unlist(dat_all[,i])
     }
-  cor_plot_all(paste("[model]_noCov_cutoff=", cutoff, sep=""), dat_all)
+  cor_plot_all(paste(model, "_noCov_cutoff=", cutoff, "\n", sep=""), dat_all,
+               dir)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -461,16 +577,17 @@ aics <- c()
 cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
-base_dir <- "dist_updated/zinf_dist_noCov_zeroincld"
+model <- "time_negbin"
+base_dir <- paste("experiments/", model, "/" , sep="")
 
 # The for-loop is to iterate through all possible cutoffs for
 # geographic distance or for travel times, and then fit the
 # models based on the cutoff, generate correlation plots, and
 # obtain the AIC and Sum or Residual Squares
-for(c in cutoffs){
-    res <- plot_cutoff(c, base_dir)
-    aic1 <- 8 - 2 * res$nb$loglik
-    aic2 <- 8 - 2 * res$nb2$loglik
+for(c in cutoffs_t){
+    res <- plot_cutoff(c, base_dir, model)
+    aic1 <- res$nb$aic#8 - 2 * res$nb$loglik
+    aic2 <- res$nb2$aic#8 - 2 * res$nb2$loglik
     ssr1 <- sum((res$nb$fitted.values - res$f1)^2)
     ssr2 <- sum((res$nb2$fitted.values - res$f2)^2)
     aics <- rbind(aics, c(aic1, aic2, ssr1, ssr2))
@@ -480,7 +597,7 @@ aics
 
 # The "summary" is a matrix that holds the AIC and Sum of residual
 # squares information at each cutoff.
-summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
+summary <- cbind(cutoffs_t, aics, aics[,1]+aics[,2] - 8, aics[,3]+aics[,4])
 colnames(summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
@@ -498,7 +615,23 @@ Get the relevant data as a dataframe. This is almost identical to the
 dataframe for regressions without additional covariates, except that it
 includes the indicators and travel time and geographic distance between
 source location and Malabo. Again, the last row of the dataframe, which
-has a travel time of 0, is removed.
+has a travel time of 0, is removed.  
+Inputs of the gravity\_dat:  
+   w: commuting flow  
+   N1: population at source location  
+   N2: population at destination location  
+   d: geographic distance  
+   t: travel time  
+   d\_mal: geographic distance from source to Malabo  
+   t\_mal: travel time from source to Malabo  
+   Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
+   Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for
+no)  
+   Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
+   Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
+   Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
+   Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
+   Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)
 
 ``` r
 gravity_dat_covs <- c()
@@ -509,12 +642,12 @@ for(i in 1:nrow(BI_survey_data)){
     N1 <- sum(BI_survey_data[areaId==dat$areaId, pop])
     N2 <- pop(dest)
     src_cor <- BI_survey_data[areaId==dat$areaId, .(X, Y)]
-    dest_cor <- loc2(dest)
-    mal_cor <- loc2("ti_mal")
+    dest_cor <- loc(dest)
+    mal_cor <- loc("ti_mal")
     d <- dist(src_cor, dest_cor)
     if(dest == "to"){
-      d <- dist(src_cor, loc2("ti_mal"))
-      d <- d + dist(loc2("ti_mal"), dest_cor)
+      d <- dist(src_cor, mal_cor)
+      d <- d + dist(mal_cor, dest_cor)
     }
     d2 <- dist(src_cor, mal_cor)
     t <- tt(dat$areaId, dest)
@@ -548,9 +681,9 @@ cutoff. It is almost identical to the plot\_cutoff() function above,
 except that it includes additional covariates in its models.
 
 ``` r
-plot_cutoff_covs <- function(cutoff, base_dir){
-  rel_gravity_dat3 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d > cutoff,]
-  rel_gravity_dat4 <- rel_gravity_dat_covs[rel_gravity_dat_covs$d <= cutoff,]
+plot_cutoff_covs <- function(cutoff, base_dir, model){
+  rel_gravity_dat3 <- rel_gravity_dat_covs[rel_gravity_dat_covs$t > cutoff,]
+  rel_gravity_dat4 <- rel_gravity_dat_covs[rel_gravity_dat_covs$t <= cutoff,]
   
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
@@ -568,27 +701,29 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   riaba_nb <- as.numeric(dat$Riaba)
   moka_nb <- as.numeric(dat$Moka)
   ureka_nb <- as.numeric(dat$Ureka)
-  #nb <- glm.nb(y_nb~N1_nb+N2_nb+d_nb+d2_nb+peri_nb+malabo_nb+
-   #              baney_nb+luba_nb+riaba_nb+moka_nb+ureka_nb)
+  nb <- glm.nb(y_nb~N1_nb+N2_nb+t_nb+t2_nb+peri_nb+malabo_nb+
+                 baney_nb+luba_nb+riaba_nb+moka_nb+ureka_nb)
   
-  nb <- NA
-  if(cutoff <= 60000){
-    nb <- zeroinfl(y_nb~N1_nb+N2_nb+d_nb+d2_nb + peri_nb+malabo_nb+
-                 baney_nb+luba_nb+riaba_nb+moka_nb, dist="negbin")
-  } else{
-    nb <- zeroinfl(y_nb~N1_nb+d_nb+d2_nb + peri_nb+malabo_nb+
-                     baney_nb+luba_nb+riaba_nb+moka_nb, dist="negbin")
-  }
+  dir <- paste(base_dir, model, "_cov_cutoff=", cutoff, sep="")
+  #nb <- NA
+  #if(cutoff <= 60000){
+   # nb <- zeroinfl(y_nb~N1_nb+N2_nb+t_nb+t2_nb + peri_nb+malabo_nb+
+    #             baney_nb+luba_nb+riaba_nb+moka_nb, dist="negbin")
+  #} else{
+   # nb <- zeroinfl(y_nb~N1_nb+t_nb+t2_nb + peri_nb+malabo_nb+
+    #                 baney_nb+luba_nb+riaba_nb+moka_nb, dist="negbin")
+  #}
 
   if(cutoff <= 0){
-    dir_name <- paste(base_dir, "/no_cutoff", sep = "")
-    dir.create(dir_name)
+    #dir_name <- paste(base_dir, "/no_cutoff", sep = "")
+    #dir.create(dir_name)
     
     dat <- cbind(dat, list(pred=nb$fitted.values))
     for(i in 1:ncol(dat)){
       dat[,i] <- unlist(dat[,i])
     }
-    cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat)
+    cor_plot_all(paste(model, "_cov_cutoff=", cutoff, "\n", sep=""), dat,
+                 dir)
     
     return(list(nb=nb, nb2=list(fitted.values=0, aic=24, loglik=0), f1=y_nb, f2=0))
     #return(c(nb$aic, 0, sum(nb$residuals^2), 0))
@@ -610,21 +745,21 @@ plot_cutoff_covs <- function(cutoff, base_dir){
   riaba_nb2 <- as.numeric(dat2$Riaba)
   moka_nb2 <- as.numeric(dat2$Moka)
   ureka_nb2 <- as.numeric(dat2$Ureka)
-  #nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+d_nb2+d2_nb2+peri_nb2+malabo_nb2+
-   #              baney_nb2+luba_nb2+riaba_nb2+moka_nb2+ureka_nb2)
+  nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2+t2_nb2+peri_nb2+malabo_nb2+
+                 baney_nb2+luba_nb2+riaba_nb2+moka_nb2+ureka_nb2)
   
-  nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+d_nb2+d2_nb2+peri_nb2+malabo_nb2+
-                 baney_nb2+luba_nb2+riaba_nb2+moka_nb2, dist="negbin")
+  #nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+t_nb2+t2_nb2+peri_nb2+malabo_nb2+
+    #             baney_nb2+luba_nb2+riaba_nb2+moka_nb2, dist="negbin")
   
-  dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
-  dir.create(dir_name)
+  #dir_name <- paste(base_dir, "/cutoff=", cutoff, sep = "")
+  #dir.create(dir_name)
   
-  dat_all <- cbind(rbind(dat, dat2), list(pred=rbind(nb$fitted.values,
+  dat_all <- cbind(rbind(dat, dat2), list(pred=c(nb$fitted.values,
                                                      nb2$fitted.values)))
   for(i in 1:ncol(dat_all)){
       dat_all[,i] <- unlist(dat_all[,i])
     }
-  cor_plot_all(paste("[model]_cov_cutoff=", cutoff, sep=""), dat_all)
+  cor_plot_all(paste(model, "_cov_cutoff=", cutoff, "\n", sep=""), dat_all, dir)
   
   return(list(nb=nb, nb2=nb2, f1=y_nb, f2=y_nb2))
   #return(c(nb$aic, nb2$aic, sum(nb$residuals^2), sum(nb2$residuals^2)))
@@ -640,28 +775,25 @@ constant is 24 instead of 8, since we have 12 covariates instead of 4.
 
 ``` r
 aics <- c()
-cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200, 220, 240) * 1000
+cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
-base_dir <- "dist_updated/zinf_dist_cov_zeroincld"
+model <- "time_negbin_covs"
+base_dir <- paste("experiments/", model, "/" , sep="")
 
-for(c in cutoffs){
+for(c in cutoffs_t){
   #tryCatch({
-  res <- plot_cutoff_covs(c, base_dir)
-  aic1 <- 24 - res$nb$loglik
-  aic2 <- 24 - res$nb2$loglik
+  res <- plot_cutoff_covs(c, base_dir, model)
+  aic1 <- res$nb$aic#24 - res$nb$loglik
+  aic2 <- res$nb2$aic#24 - res$nb2$loglik
   ssr1 <- sum((res$nb$fitted.values - res$f1)^2)
   ssr2 <- sum((res$nb2$fitted.values - res$f2)^2)
   aics <- rbind(aics, c(aic1, aic2, ssr1, ssr2))
   #}, error = function(e){})
 }
 
-nb_mul_cov <- plot_mul_cov("multinom/time_cov")
-nb_mul_cov$AIC
-sum(nb_mul_cov$residuals^2)
-
 aics
-aics_summary <- cbind(cutoffs / 1000, aics, aics[,1]+aics[,2]-24, aics[,3]+aics[,4])
+aics_summary <- cbind(cutoffs_t, aics, aics[,1]+aics[,2]-24, aics[,3]+aics[,4])
 colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near", 
                             "Residual Far", "Residual Near",
                             "AIC Sum", "Residual Sum")
@@ -674,13 +806,52 @@ write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep
 
 Prepare the relevant data and true values as dataframes for multinomial
 regression.  
+The fundamental difference between the multinomial regression and the
+negative binomial regression is that for the multinomial regression, we
+are trying to estimate the relative probability of a person traveling
+from the source location to each of the 7 destinations, while for the
+negative binomial regression, we are trying to predict the total number
+of people between two locations based on their population, distance or
+travel time. Thus, the row of the dataframe for negative binomial
+regression contains the information between (source, destination) pairs,
+while the row of the dataframe for multinomial regression contains the
+information between (source, dest1, dest2, … , dest7).  
 rel\_dat\_mul is used for training the multinomial regression model. For
 each pair of locations (areaId for source, name of destination), it the
 commuting flow w is greater than 0, then the same pair will repeat for w
 times. The levels of multinomial regression are the 7 different
 destinations.  
 test\_dat\_mul stores the dataframe without repeating these pairs. It is
-used for getting the predicted values comparable to the true values.
+used for getting the predicted values comparable to the true values.  
+Inputs of the gravity\_dat:  
+   w\_total: total commuting flow between a given areaId to all 7
+locations  
+   N1: population at source location  
+   t\_mal: travel time from source to Malabo  
+   Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
+   Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for
+no)  
+   Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
+   Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
+   Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
+   Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
+   Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)  
+   N2.ti\_mal: population at Malabo and Peri  
+   N2.ti\_ban: population at Baney  
+   N2.ti\_lub: population at Luba  
+   N2.ti\_ria: population at Riaba  
+   N2.ti\_mok: population at Moka  
+   N2.ti\_ure: population at Ureka  
+   N2.to: population at mainland of equatorial guinea  
+   t.ti\_mal: travel time from source to Malabo and Peri  
+   t.ti\_ban: travel time from source to Baney  
+   t.ti\_lub: travel time from source to Luba  
+   t.ti\_ria: travel time from source to Riaba  
+   t.ti\_mok: travel time from source to Moka  
+   t.ti\_ure: travel time from source to Ureka  
+   t.to: travel time from source to mainland of equatorial guinea  
+   dest: the destination location, which is one of “to”, “ti\_mal”,
+“ti\_ban”, “ti\_lub”, “ti\_ria”, “ti\_mok”, and “ti\_ure”.
 
 ``` r
 rel_dat_mul <- c()
@@ -709,8 +880,8 @@ for(i in 1:nrow(BI_survey_data)){
   lst <- append(lst, all_t)
   
   src_cor <- BI_survey_data[areaId==row$areaId, .(X, Y)]
-  dest_cor <- loc2(dest)
-  mal_cor <- loc2("ti_mal")
+  dest_cor <- loc(dest)
+  mal_cor <- loc("ti_mal")
   t2 <- tt(row$areaId, "ti_mal")
   
   lst <- append(lst, list(t_mal=t2))
@@ -756,46 +927,6 @@ sub <- sub[,as.numeric(order(colnames(sub)))]
 sum((pred_mul - sub)^2)
 ```
 
-The helper function for obtaining correlation plots on the multinomial
-regression
-model.
-
-``` r
-mul_plot_noBox2 <- function(inv, name, log, pred, classification, dir, orig){
-  inv <- as.numeric(inv)
-  dv <- orig / pred
-  z <- which(dv != 0)
-  p2 <- ggplot() +
-    geom_point(data = NULL, 
-               aes(x = inv[z], y = dv[z]), col = "red") +
-    ggtitle(paste(dir, "w^(D) / w^(M) vs", name)) +
-    xlab(name) + ylab("w^(D) / w^(M)") + 
-    geom_hline(yintercept = 1, col="black") +
-    scale_y_log10(limits = c(0.01, 100))
-  if(log){
-    p2 <- p2 + scale_x_log10()
-  }
-  png(paste(dir, "/", name, "_", classification, ".png", sep = ""))
-  print(p2)
-  dev.off()
-  
-  z2 <- which(dv == 0)
-  p <- ggplot() + 
-    geom_point(data=NULL, 
-               aes(x=inv[z2], y=pred[z2], col="red")) +
-    ggtitle(paste(dir, "w^(M) vs", name)) +
-    xlab(name) + ylab("w^(M)") + 
-    geom_hline(yintercept = 0, col="black")
-  if(log){
-    p <- p + scale_x_log10()
-  }
-  
-  png(paste(dir, "/", name, "_", classification, "_zero.png", sep = ""))
-  print(p)
-  dev.off()
-}
-```
-
 Get the original values, predicted values and data with the format that
 can easily obtain correlation plots.  
 And, plot these correlation plots.
@@ -813,30 +944,32 @@ for(i in 1:nrow(test_dat_mul)){
     N2 <- row[[paste("N2.", d, sep="")]]
     t <- row[[paste("t.", d, sep="")]]
     
-    pred_mul_rs <- c(pred_mul_rs, pred_mul[i, j])
-    orig <- c(orig, sub[i, j])
-    
-    src_cor <- BI_survey_data[areaId==BI_survey_data[i,]$areaId, .(X, Y)]
-    dest_cor <- loc2(d)
-    dst <- dist(src_cor, dest_cor)
-    if(d == "to"){
-      dst <- dist(src_cor, loc2("ti_mal"))
-      dst <- dst + dist(loc2("ti_mal"), dest_cor)
+    if(t > 0){
+      pred_mul_rs <- c(pred_mul_rs, pred_mul[i, j])
+      orig <- c(orig, sub[i, j])
+      
+      src_cor <- BI_survey_data[areaId==BI_survey_data[i,]$areaId, 
+                                .(X, Y)]
+      dest_cor <- loc(d)
+      dst <- dist(src_cor, dest_cor)
+      if(d == "to"){
+        dst <- dist(src_cor, loc("ti_mal"))
+        dst <- dst + dist(loc("ti_mal"), dest_cor)
+      }
+  
+      dat <- rbind(dat, list(N1=N1,N2=N2,t=t, d=dst))
+      
+      j <- j + 1
     }
-
-    dat <- rbind(dat, list(N1=N1,N2=N2,t=t, d=dst))
-    
-    j <- j + 1
   }
 }
 dat <- data.frame(dat)
-base_dir <- "dist_updated"
 
-dir_name <- paste(base_dir, "/multinomial2", sep = "")
-dir.create(dir_name)
+model <- "multinomial"
+base_dir <- paste("experiments/", model, "/", model, sep="")
 
 dat <- cbind(dat, list(w=orig, pred=pred_mul_rs))
-cor_plot_all("multinom", dat)
+cor_plot_all("multinom \n", dat, base_dir)
 ```
 
 # Results
@@ -856,7 +989,19 @@ below:
 
 ### Zero Inflated Negative Binomial Regression Performance Plots
 
-<img src="zinf_dist_noCov_cutoff=0.png" title="A caption" alt="A caption" width="100%" />
+<img src="zinf_time_negbin_noCov_cutoff=0.png" title="A caption" alt="A caption" width="100%" />
 
 To see a complete summary of AIC and Sum of Residual Squares of each
-model at each cutoff, view the [summary.csv](./summary.csv)
+model at each cutoff, view the [summary.csv](experiments/summary.csv)  
+For references on the column names in summary.csv, you can look at
+[column\_names.csv](experiments/column_names.csv)  
+Notations:  
+distance: using distance instead of travel time in the model.  
+time: using travel time instead of distance in the model.  
+negbin: using negative binomial regression for the model.  
+poisson: using poisson regression for the model.  
+multinomial: using multinomial regression for the model.  
+zinf: the model is a zero-inflated version.  
+covs: additional covariates (indicators for ad2, and travel
+time/distance from source location to Malabo) are included in the model
+fitting.
