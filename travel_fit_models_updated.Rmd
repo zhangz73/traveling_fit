@@ -412,7 +412,8 @@ for(i in 1:nrow(BI_survey_data)){
     }
     t <- tt(dat$areaId, dest)
     gravity_dat <- rbind(gravity_dat, 
-                         list(w = w, N1 = N1, N2 = N2, d = d, t = t))
+                list(areaId=dat$areaId, dest=dest,
+                     w = w, N1 = N1, N2 = N2, d = d, t = t))
   }
 }
 gravity_dat <- data.frame(gravity_dat)
@@ -617,7 +618,9 @@ for(i in 1:nrow(BI_survey_data)){
     ad2 <- unique(BI_survey_data[areaId==dat$areaId, ad2])
     ind[ad2] <- 1
     
-    lst <- list(w = w, N1 = N1, N2 = N2, d = d, d_mal = d2, t=t, t_mal=t2)
+    lst <- list(areaId=dat$areaId, dest=dest,
+                w = w, N1 = N1, N2 = N2, d = d, d_mal = d2, t=t, 
+                t_mal=t2)
     lst <- append(lst, ind)
     gravity_dat_covs <- rbind(gravity_dat_covs, lst)
   }
@@ -831,7 +834,7 @@ for(i in 1:nrow(BI_survey_data)){
   ind[ad2] <- 1
   N1 <- row$pop
   w_total <- sum(row[,19:25])
-  lst <- append(list(N1=N1, w_total = w_total), ind)
+  lst <- append(list(areaId=row$areaId,N1=N1, w_total = w_total), ind)
   all_t <- list(t.ti_mal = 0, t.ti_ban = 0, t.ti_lub = 0,
                 t.ti_ria = 0, t.ti_mok = 0, t.ti_ure = 0, t.to = 0)
   all_N2 <- list(N2.ti_mal = 0, N2.ti_ban = 0, N2.ti_lub = 0,
