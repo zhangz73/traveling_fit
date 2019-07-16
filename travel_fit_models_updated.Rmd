@@ -427,8 +427,36 @@ A helper function to generate correlation plots on a given cutoff. The cutoff ca
 One thing to notice is that if the cutoff travel distance is greater than 60K, I will remove the covariate N2, because beyond that cutoff, the trips in with higher distance than cutoff only have one destination, the mainland Equitorial Guinea, and thus the destination population will always be the same. Without removing this feature, the zero inflated model will crash.
 ```{r, eval=FALSE}
 plot_cutoff <- function(cutoff, base_dir, model){
+  ###
+  # plot_cutoff() is a function that perform fit of a model under a
+  # given cutoff, and then generate ratio plots and residual plots
+  # to visualize the performance of the model
+  # Inputs:
+  #   cutoff: the cutoff value, on geometric distance or travel time
+  #   base_dir: the base directory to save the plots
+  #   model: the name of the model
+  # Outputs:
+  #   a list containing the fitted models of data on both sides of the
+  #   cutoff, as well as the true values of the response variable of the
+  #   data on these two sides
+  #
+  # Notice:
+  #   this script should be slightly modified if you want to switch
+  #   between geographic distance and travel time, or if you want to
+  #   switch between poisson regression, negative binomial regression,
+  #   and zero-inflated negative binomial regression models
+  #   The places to modify will be marked in the comments below
+  ###
+  
+  ###[CHANGE]
+  # rel_gravity_dat$t for travel time
+  # rel_gravity_dat$d for geographic distance
   rel_gravity_dat3 <- rel_gravity_dat[rel_gravity_dat$t > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat[rel_gravity_dat$t <= cutoff,]
+  
+  ###[CHANGE]
+  # in glm.nb, glm, or zeroinfl, switch between t_nb and d_nb
+  # t_nb for travel time, d_nb for geographic distance
   
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
@@ -437,6 +465,10 @@ plot_cutoff <- function(cutoff, base_dir, model){
   N2_nb <- log(as.numeric(dat$N2))
   d_nb <- log(as.numeric(dat$d))
   t_nb <- log(as.numeric(dat$t))
+  
+  ###[CHANGE]
+  # to change the model, modify or comment out this line, and change
+  # the header of the model (i.e. glm.nb, glm, zeroinfl)
   nb <- glm.nb(y_nb~N1_nb+N2_nb+t_nb)
   #nb <- NA
   #if(cutoff <= 60000){
@@ -462,12 +494,19 @@ plot_cutoff <- function(cutoff, base_dir, model){
     #return(c(8-2*nb$loglik, 8, sum(nb$residuals^2), 0))
   }
   
+  ###[CHANGE]
+  # in glm.nb, glm, or zeroinfl, switch between t_nb2 and d_nb2
+  # t_nb2 for travel time, d_nb2 for geographic distance
   dat2 <- rel_gravity_dat4
   y_nb2 <- as.numeric(dat2[,1])
   N1_nb2 <- log(as.numeric(dat2$N1))
   N2_nb2 <- log(as.numeric(dat2$N2))
   d_nb2 <- as.numeric(dat2$d)
   t_nb2 <- as.numeric(dat2$t)
+  
+  ###[CHANGE]
+  # to change the model, modify or comment out this line, and change
+  # the header of the model (i.e. glm.nb, glm, zeroinfl)
   nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2)
   #nb2 <- zeroinfl(y_nb2~N1_nb2+N2_nb2+t_nb2, dist="negbin")
 
@@ -590,8 +629,39 @@ rel_gravity_dat_covs <- gravity_dat_covs[1:1357,]
 A helper function to plot generate the correlation plots on the given cutoff. It is almost identical to the plot_cutoff() function above, except that it includes additional covariates in its models.
 ```{r, eval=FALSE}
 plot_cutoff_covs <- function(cutoff, base_dir, model){
+  ###
+  # plot_cutoff_covs() is a function that perform fit of a model under a
+  # given cutoff, and then generate ratio plots and residual plots
+  # to visualize the performance of the model
+  # It differs from plot_cutoff only at that it includes additional
+  # covariates for fitting the models
+  # Inputs:
+  #   cutoff: the cutoff value, on geometric distance or travel time
+  #   base_dir: the base directory to save the plots
+  #   model: the name of the model
+  # Outputs:
+  #   a list containing the fitted models of data on both sides of the
+  #   cutoff, as well as the true values of the response variable of the
+  #   data on these two sides
+  #
+  # Notice:
+  #   this script should be slightly modified if you want to switch
+  #   between geographic distance and travel time, or if you want to
+  #   switch between poisson regression, negative binomial regression,
+  #   and zero-inflated negative binomial regression models
+  #   The places to modify will be marked in the comments below
+  ###
+  
+  ###[CHANGE]
+  # rel_gravity_dat$t for travel time
+  # rel_gravity_dat$d for geographic distance
   rel_gravity_dat3 <- rel_gravity_dat_covs[rel_gravity_dat_covs$t > cutoff,]
   rel_gravity_dat4 <- rel_gravity_dat_covs[rel_gravity_dat_covs$t <= cutoff,]
+  
+  ###[CHANGE]
+  # in glm.nb, glm, or zeroinfl, switch between (t_nb, t2_nb) 
+  # and (d_nb, d2_nb)
+  # (t_nb, t2_nb) for travel time, (d_nb, d2_nb) for geographic distance
   
   # Negative Binomial Regression
   dat <- rel_gravity_dat3
@@ -609,6 +679,10 @@ plot_cutoff_covs <- function(cutoff, base_dir, model){
   riaba_nb <- as.numeric(dat$Riaba)
   moka_nb <- as.numeric(dat$Moka)
   ureka_nb <- as.numeric(dat$Ureka)
+  
+  ###[CHANGE]
+  # to change the model, modify or comment out this line, and change
+  # the header of the model (i.e. glm.nb, glm, zeroinfl)
   nb <- glm.nb(y_nb~N1_nb+N2_nb+t_nb+t2_nb+peri_nb+malabo_nb+
                  baney_nb+luba_nb+riaba_nb+moka_nb+ureka_nb)
   
@@ -638,6 +712,11 @@ plot_cutoff_covs <- function(cutoff, base_dir, model){
     #return(c(24-nb$loglik, 0, sum(nb$residuals^2), 0))
   }
   
+  ###[CHANGE]
+  # in glm.nb, glm, or zeroinfl, switch between (t_nb2, t2_nb2) 
+  # and (d_nb2, d2_nb2)
+  # (t_nb2, t2_nb2) for travel time, 
+  # (d_nb2, d2_nb2) for geographic distance
   dat2 <- rel_gravity_dat4
   y_nb2 <- as.numeric(dat2[,1])
   N1_nb2 <- log(as.numeric(dat2$N1))
@@ -653,6 +732,10 @@ plot_cutoff_covs <- function(cutoff, base_dir, model){
   riaba_nb2 <- as.numeric(dat2$Riaba)
   moka_nb2 <- as.numeric(dat2$Moka)
   ureka_nb2 <- as.numeric(dat2$Ureka)
+  
+  ###[CHANGE]
+  # to change the model, modify or comment out this line, and change
+  # the header of the model (i.e. glm.nb, glm, zeroinfl)
   nb2 <- glm.nb(y_nb2~N1_nb2+N2_nb2+t_nb2+t2_nb2+peri_nb2+malabo_nb2+
                  baney_nb2+luba_nb2+riaba_nb2+moka_nb2+ureka_nb2)
   
