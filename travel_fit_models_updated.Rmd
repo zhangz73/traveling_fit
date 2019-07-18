@@ -615,7 +615,7 @@ for(i in 1:nrow(BI_survey_data)){
     # a list of indicators for each of the 7 locations
     ind <- list(Peri = 0, Malabo = 0, Baney = 0, Luba = 0,
                 Riaba = 0, Moka = 0, Ureka = 0)
-    ad2 <- unique(BI_survey_data[areaId==dat$areaId, ad2])
+    ad2 <- as.character(unique(BI_survey_data[areaId==dat$areaId, ad2]))
     ind[ad2] <- 1
     
     lst <- list(areaId=dat$areaId, dest=dest,
@@ -627,6 +627,9 @@ for(i in 1:nrow(BI_survey_data)){
 }
 gravity_dat_covs <- data.frame(gravity_dat_covs)
 rel_gravity_dat_covs <- gravity_dat_covs[1:1357,]
+for(i in 1:ncol(rel_gravity_dat_covs)){
+  rel_gravity_dat_covs[,i] <- unlist(rel_gravity_dat_covs[,i])
+}
 ```
 
 A helper function to plot generate the correlation plots on the given cutoff. It is almost identical to the plot_cutoff() function above, except that it includes additional covariates in its models.
@@ -830,7 +833,7 @@ for(i in 1:nrow(BI_survey_data)){
   row <- BI_survey_data[i,]
   ind <- list(Peri = 0, Malabo = 0, Baney = 0, Luba = 0,
               Riaba = 0, Moka = 0, Ureka = 0)
-  ad2 <- row$ad2
+  ad2 <- as.character(row$ad2)
   ind[ad2] <- 1
   N1 <- row$pop
   w_total <- sum(row[,19:25])
