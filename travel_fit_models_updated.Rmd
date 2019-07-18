@@ -793,6 +793,8 @@ colnames(aics_summary) <- c("Cutoffs", "AIC Far", "AIC Near",
 bname <- str_replace_all(base_dir, "/", "_")
 write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
 ```
+
+A super method that can handle different requests from the user. It can generate varies kinds of models based on the requests from the user, and it can also generate the ratio plots and residual plots to visualize the performance of the model if the user prefers to show the plots.
 ```{r, eval=FALSE}
 super_model_fits <- function(rel_dat, model_name, image_name = NULL,
                              show_plots = TRUE, cutoff = 0, 
