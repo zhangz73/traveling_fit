@@ -6,7 +6,7 @@ library(gpclib)
 library(sp)
 
 map_cor_ad <- function(map_data, shapefile, vec_cor){
-  ad_sp <- spTransform(raster_uganda_ad2,
+  ad_sp <- spTransform(shapefile,
             CRS("+proj=longlat +datum=WGS84"))
   cor_sp <- SpatialPointsDataFrame(map_data[,vec_cor], mapdata)
   crs(cor_sp) <- "+proj=longlat +datum=WGS84"
