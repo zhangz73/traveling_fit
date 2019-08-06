@@ -1,10 +1,44 @@
+library(doParallel)
+library(foreach)
+library(doRNG)
+library(bigstatsr)
+library(MASS)
+library(corrplot)
+library(ggplot2)
+
+registerDoParallel(cores = 20)
+
 predict_allType <- function(coefs, dat, model_name){
+  ###
+  # predict_allType() is a function that gives predicted values
+  # of a given dataset using the given coefficients and the type
+  # of model.
+  #
+  # Inputs
+  #   coefs: coefficients of the model.
+  #   dat: the dataset to predict.
+  #   model_name: the name of model, valid names include "linreg",
+  #               "poisson", "negbin", and "multinom"
+  # Output:
+  #   the predicted values of the dataset. Return NULL if the inputs
+  #   are illegal.
+  #
+  # Note:
+  #   If the requested model is multinomial regression, you should also
+  #   make sure that the coefficient matrix passed in is properly named.
+  #   I.e. it should follow the same convention as the coefficients
+  #   returned by the summary() of a multinom() object.
+  ###
+  
+  # helper function for getting predicted values from linear regression
   predict_lin <- function(coefs, dat){
     coefs <- matrix(coefs, nrow=1)
     pred <- coefs %*% t(dat)
     return(pred)
   }
   
+  # helper function for getting predicted values from poisson
+  # regression or negative binomial regression
   predict_poi <- function(coefs, dat){
     coefs <- matrix(coefs, nrow=1)
     pred <- coefs %*% t(dat)
@@ -12,6 +46,8 @@ predict_allType <- function(coefs, dat, model_name){
     return(pred)
   }
   
+  # helper function for getting predicted values from multinomial
+  # regression. The predicted values are probabilities.
   predict_mul <- function(coefs, dat){
     rownames <- rownames(coefs)
     coefs <- matrix(coefs, ncol = ncol(coefs))
@@ -30,8 +66,12 @@ predict_allType <- function(coefs, dat, model_name){
     return(standardized_pred)
   } 
   
+  # Bind 1 to the beginning of dataset to allow for intercept
   dat <- cbind(rep(1, nrow(dat)), dat)
   dat <- data.matrix(dat)
+  
+  # predict using different models based on different model_name
+  # return NULL if the model_name is illegal
   if(model_name == "linreg"){
     return(predict_lin(coefs, dat))
   } else if(model_name == "poisson" || model_name == "negbin"){
@@ -46,6 +86,23 @@ predict_allType <- function(coefs, dat, model_name){
 }
 
 sample_coefs <- function(est, sd){
+  ###
+  # sample_coefs() is a function for sampling a set of coefficient
+  # values based on the given coefficient values and their
+  # corresponding standard deviations. Assuming the distributions
+  # of these coefficient values follow normal distribution N(est, sd)
+  # 
+  # Inputs:
+  #   est: the estimated values for each coefficient.
+  #   sd: the standard deviation for each coefficient value.
+  #   est, sd are usually obtained from a lm or glm object.
+  #
+  # Output:
+  #   a random sample of coefficient values based on the given
+  #   estimated values and their corresponding standard deviations.
+  #
+  ###
+  
   sample <- matrix(NA, nrow = nrow(est), ncol = ncol(est))
   for(i in 1:nrow(est)){
     for(j in 1:ncol(est)){
@@ -57,5 +114,248 @@ sample_coefs <- function(est, sd){
   return(sample)
 }
 
-predict_allType(nb$coefficients, small_df, "negbin")
-predict_allType(s$coefficients, test_dat_mul[1:3,1:ncol(r)-1], "multinom")
+sample_coefs_cor <- function(n, model){
+  ###
+  # sample_coefs_cor() is a helper function for sampling the
+  # coefficients of a model while taking the correlations
+  # between each covariate into account. The sampling takes
+  # place in a multivariate normal distribution.
+  #
+  # Inputs:
+  #   n: the number of samples requested.
+  #   model: the object of a lm() or glm(). Objects from
+  #          multinom() are NOT accepted in this function.
+  #
+  # Outputs:
+  #   a matrix containing n samples of coefficients of the given model.
+  ###
+  coefs <- model$coefficients
+  cov_matrix <- vcov(model)
+  return(mvrnorm(n = n, mu = coefs, Sigma = cov_matrix))
+}
+
+s <- sample_coefs_cor(100, near)
+corrplot(cor(s), type = "upper", tl.srt = 45)
+
+pairs(s, pch = 21)
+
+get_pred_values <- function(n, dat, model_name, cutoff = 0, signatures,
+                            train_data){
+  ###
+  # get_pred_values() is a function that can generate a distribution
+  # of predicted values of a dataset using a given model.
+  #
+  # Inputs:
+  #   n: number of models to simulate for a given type of model
+  #   dat: the data to predict.
+  #   model_name: the type of model. Legal values are: linreg,
+  #               negbin, poisson, and multinom.
+  #   cutoff: the cutoff value on geographical distance (in meters).
+  #           DEFAULT cutoff = 0, which means no cutoff.
+  #   signatures: columns of the data that will NOT be used for
+  #               model fitting but can uniquely identify the
+  #               location of each data points. signatures will be
+  #               appended to the result dataframe.
+  #   train_data: the training data for the model.
+  #
+  # Outputs:
+  #   a matrix containing signatures and predicted values in each
+  #   simulation for each data point.
+  #
+  # Note:
+  #   If the model requested is multinom, then the predicted values
+  #   will be given in terms of probabilities of each level.
+  #   Columns of probabilities will be appended together in the result
+  #   dataframe. [signatures prob_1 prob_2 ... prob_n]
+  ###
+  
+  # get the predicted data for multinomial regression model
+  if(model_name == "multinom"){
+    print("model training...")
+    mul_reg <- multinom(dest~. - w_total - areaId, data = train_data, 
+                        maxit = 5000)
+    print("getting coefficients and covariance matrix...")
+    summary_mul <- summary(mul_reg)
+    coefs_tmp <- summary_mul$coefficients
+    coefs <- c()
+    for(i in 1:nrow(coefs_tmp)){
+      coefs <- c(coefs, coefs_tmp[i,])
+    }
+    sampled_mul <- mvrnorm(n = n, 
+                           mu = coefs,
+                           Sigma = vcov(mul_reg))
+    results <- matrix(as.matrix(signatures), nrow = nrow(signatures))
+    print("calculating predicted values for each sampled coefficients...")
+    for(i in 1:n){
+      curr_model <- sampled_mul[i,]
+      curr_model <- matrix(curr_model, ncol = ncol(train_data) - 2, 
+                           byrow = T)
+      rownames(curr_model) <- rownames(summary_mul$coefficients)
+      colnames(curr_model) <- colnames(summary_mul$coefficients)
+      pred_mul <- predict_allType(curr_model, 
+                dat[,!(names(dat) %in% c("areaId", "w_total"))], 
+                "multinom")
+      #for(j in 1:ncol(pred_mul)){
+        #pred_mul[,j] <- pred_mul[,j] * signatures$w_total
+      #}
+      results <- cbind(results, pred_mul)
+    }
+    print("Jobs Done!")
+    return(results)
+  }
+  
+  # get the predicted values for linear regression, poisson regression,
+  # or negative binomial regression.
+  dat_near <- NA
+  model_near <- NA
+  sampled_models_near <- NA
+  if(cutoff > 0){
+    dat_near <- dat[dat$d <= cutoff,]
+    model_near <- fitted_models$model_near
+    sampled_models_near <- sample_coefs_cor(n, model_near)
+  }
+  dat_far <- dat[dat$d > cutoff,]
+  dat_far$d <- log(dat_far$d)
+  fitted_models <- super_model_fits(train_data, model_name = model_name,
+                                    cutoff = cutoff, use_time = F,
+                                    show_plots = F) 
+  model_far <- fitted_models$model_far
+  sampled_models_far <- sample_coefs_cor(n, model_far)
+  
+  results <- matrix(NA, nrow = nrow(dat), ncol = n)
+  for(i in 1:n){
+    m_far <- sampled_models_far[i,]
+    pred_far <- predict_allType(m_far, dat_far, model_name)
+    pred_all <- pred_far
+    if(cutoff > 0){
+      m_near <- sampled_models_near[i,]
+      pred_near <- predict_allType(m_near, dat_near, model_name)
+      pred_all <- cbind(pred_near, pred_far)
+    }
+    pred_all <- matrix(pred_all, ncol = 1)
+    results[,i] <- pred_all
+  }
+  results <- cbind(signatures, results)
+  names <- c()
+  for(i in 1:n){
+    names <- c(names, paste("model_", i, sep = ""))
+  }
+  colnames(results) <- c(colnames(signatures), names)
+  rownames(results) <- NULL
+  return(results)
+}
+dat <- train_data[order(train_data$d), 1:6]
+df <- get_pred_values(10, data.frame(cbind(N1 = log(dat$N1), 
+        N2 = log(dat$N2), d = dat$d)), "negbin", 20 * 1000, 
+        dat[,1:3], train_data)
+
+plot_scatter_bars <- function(df, models_vec, max = 0){
+  ###
+  # plot_scatter_bars() is a function that plot scatter plots
+  # on predicted values vs original values, with error bars
+  # on each of the predicted values.
+  #
+  # Inputs:
+  #   df: the dataframe to be plotted. It must contain columns
+  #       "w", which is the original values of data, it should
+  #       also have columns for fitted values.
+  #   models_vec: a vector of indices indicating the locations
+  #               of fitted values of each model.
+  #   max: the maximal range of x and y coordinates. DEFAULT = 0,
+  #        which means that this function will select the maximum
+  #        value among true values and fitted values as limits
+  #        for x and y coordinates.
+  #
+  ###
+  
+  if(max == 0){
+    max <- max(max(df$w), max(df[,models_vec]))
+  }
+  plot(NA, main = "scatter plot for w_pred vs w_data",
+       xlab = "w_data", ylab = "w_pred", ylim = c(0, max), 
+       xlim=c(0, max))
+  for(i in 1:nrow(df)){
+    m <- mean(as.numeric(df[i, models_vec]))
+    q1 <- quantile(as.numeric(df[i, models_vec]), 0.25)
+    q3 <- quantile(as.numeric(df[i, models_vec]), 0.75)
+    w <- df[i,]$w
+    points(w, m, pch = 19)
+    arrows(w, q1, w, q3, code = 3, angle = 90, length = 0.05)
+  }
+}
+plot_scatter_bars(df, 4:13, 20)
+
+rel_dat_mul <- fread("rel_dat_mul.csv", sep = ",", header = T)
+test_dat_mul <- fread("test_dat_mul.csv", sep = ",", header = T)
+rel_dat_mul <- data.frame(rel_dat_mul)
+test_dat_mul <- data.frame(test_dat_mul)
+
+df_mul <- get_pred_values(10, test_dat_mul, "multinom", 0,
+                          test_dat_mul[,c(1,3)], rel_dat_mul)
+
+get_predicted_w_mul <- function(df, orig, centrals){
+  ###
+  # get_predicted_w_mul() is a function to restore the
+  # commuting flows between each pair of regions from the
+  # probabilities and total commuting flows out of each area.
+  # And it appends the predicted commuting flows to the original
+  # commuting flows of each pair of regions.
+  #
+  # Inputs:
+  #   df: the dataframe containing total commuting flows out of
+  #       each area and the probabilities of traveling from that
+  #       area to each of other regions. df is required to be
+  #       formatted in this way: [areaId w prob_1 prob_2 ... prob_n]
+  #       where the total commuting flow must be named as w and
+  #       must be on the second column.
+  #   orig: the true commuting flows between each pair of regions.
+  #   centrals: the name of each region. Must be consistent with
+  #             column names of orig.
+  #
+  # Outputs:
+  #   return the dataframe with true commuting flows and predicted
+  #   commuting flows between each pair of regions.
+  ###
+  
+  res <- c()
+  n <- (ncol(df) - 2) / length(centrals)
+  for(i in 1:nrow(df)){
+    w <- df[i, 2]
+    j <- 3
+    for(c in 1:length(centrals)){
+      true_w <- orig[i,][[centrals[c]]]
+      pred_all <- c()
+      for(k in 1:n){
+        pred_w <- df[i, j + length(centrals) * (k - 1) + (c - 1)]
+        pred_all <- c(pred_all, w * pred_w)
+      }
+      res <- data.frame(rbind(data.frame(res), 
+                  c(true_w, pred_all)))
+    }
+  }
+  return(res)
+}
+BI_survery_data <- read.csv("BI_survey_data.csv", header = T)
+centrals <- c("ti_ban", "ti_mal", "ti_mok", 
+              "ti_ria", "ti_lub", "ti_ure", "to")
+centrals <- sort(centrals)
+pred_w_mul <- get_predicted_w_mul(df_mul, BI_survery_data, centrals)
+names <- c("w")
+for(i in 1:10){
+  names <- c(names, paste("predict_", i, sep=""))
+}
+colnames(pred_w_mul) <- names
+pred_w_mul <- data.frame(pred_w_mul)
+plot_scatter_bars(pred_w_mul, 1:11, 100)
+
+coefs_tmp <- sm$coefficients
+coefs <- c()
+for(i in 1:nrow(coefs_tmp)){
+  coefs <- c(coefs, coefs_tmp[i,])
+}
+sampled_mul <- mvrnorm(n = 100, 
+                       mu = coefs,
+                       Sigma = vcov(mr))
+png("../pairs_mul.png")
+print(pairs(sampled_mul, pch=19))
+dev.off()
