@@ -22,14 +22,14 @@ library(MASS)
 library(corrplot)
 library(ggplot2)
 
-source("extract_models.R")
+source("../../extract_models.R")
 ```
 
 ## Read the Data
 ```{r}
-train_data <- fread("rel_gravity_dat_covs.csv", header = T, sep = ",")
-rel_dat_mul <- fread("rel_dat_mul.csv", sep = ",", header = T)
-test_dat_mul <- fread("test_dat_mul.csv", sep = ",", header = T)
+train_data <- fread("../../rel_gravity_dat_covs.csv", header = T, sep = ",")
+rel_dat_mul <- fread("../../rel_dat_mul.csv", sep = ",", header = T)
+test_dat_mul <- fread("../../test_dat_mul.csv", sep = ",", header = T)
 
 train_data <- data.frame(train_data)
 rel_dat_mul <- data.frame(rel_dat_mul)
@@ -394,7 +394,7 @@ df_mul <- get_pred_values(n, test_dat_mul, "multinom", 0,
                           test_dat_mul[,c(1,3)], rel_dat_mul)
 
 ## Reformat the predicted values of multinomial regression from probabilities to commuting flows
-BI_survery_data <- read.csv("BI_survey_data.csv", header = T)
+BI_survery_data <- read.csv("../../BI_survey_data.csv", header = T)
 centrals <- c("ti_ban", "ti_mal", "ti_mok", 
               "ti_ria", "ti_lub", "ti_ure", "to")
 centrals <- sort(centrals)

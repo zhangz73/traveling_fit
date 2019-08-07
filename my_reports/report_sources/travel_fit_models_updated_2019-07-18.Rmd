@@ -30,9 +30,9 @@ library(ggpubr)
 
 ## Read data
 ```{r, eval=FALSE}
-data <- read.csv("travel_times.csv", header = T)
+data <- read.csv("../../travel_times.csv", header = T)
 colnames <- colnames(data)
-BI_survey_data <- read.csv("BI_survey_data.csv", header = T)
+BI_survey_data <- read.csv("../../BI_survey_data.csv", header = T)
 BI_survey_data <- data.table(BI_survey_data)
 ```
 
@@ -535,7 +535,7 @@ cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
 model <- "time_negbin"
-base_dir <- paste("experiments/", model, "/" , sep="")
+base_dir <- paste("../../experiments/", model, "/" , sep="")
 
 # The for-loop is to iterate through all possible cutoffs for
 # geographic distance or for travel times, and then fit the
@@ -771,7 +771,7 @@ cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
 
 model <- "time_negbin_covs"
-base_dir <- paste("experiments/", model, "/" , sep="")
+base_dir <- paste("../../experiments/", model, "/" , sep="")
 
 for(c in cutoffs_t){
   #tryCatch({
@@ -1113,7 +1113,7 @@ for(i in 1:nrow(test_dat_mul)){
 dat <- data.frame(dat)
 
 model <- "multinomial"
-base_dir <- paste("experiments/", model, "/", model, sep="")
+base_dir <- paste("../../experiments/", model, "/", model, sep="")
 
 dat <- cbind(dat, list(w=orig, pred=pred_mul_rs))
 cor_plot_all("multinom \n", dat, base_dir)
@@ -1124,16 +1124,16 @@ So far, we have tried out Negative Binomial Regression, Zero Inflated Negative B
 
 ### Multinomial Regression Performance Plots
 ```{r pressure, echo=FALSE, fig.cap="A caption", out.width = '100%'}
-knitr::include_graphics("multinom.png")
+knitr::include_graphics("../../multinom.png")
 ```
 
 ### Zero Inflated Negative Binomial Regression Performance Plots
 ```{r, echo=FALSE, fig.cap="A caption", out.width = '100%'}
-knitr::include_graphics("zinf_time_negbin_noCov_cutoff=0.png")
+knitr::include_graphics("../../zinf_time_negbin_noCov_cutoff=0.png")
 ```
 
-To see a complete summary of AIC and Sum of Residual Squares of each model at each cutoff, view the [summary.csv](experiments/summary.csv)  
-For references on the column names in summary.csv, you can look at [column_names.csv](experiments/column_names.csv)  
+To see a complete summary of AIC and Sum of Residual Squares of each model at each cutoff, view the [summary.csv](../../experiments/summary.csv)  
+For references on the column names in summary.csv, you can look at [column_names.csv](../../experiments/column_names.csv)  
 Notations:  
 distance: using distance instead of travel time in the model.  
 time: using travel time instead of distance in the model.  
