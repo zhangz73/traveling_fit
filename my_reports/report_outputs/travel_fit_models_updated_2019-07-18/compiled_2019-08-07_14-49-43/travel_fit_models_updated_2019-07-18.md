@@ -1,23 +1,29 @@
----
-title: "Scripts For Negative Binomial, Zero Inflated Negative Binomial, and Multinomial Regression On Traveling Model"
-author: "Zhanhao Zhang"
-date: "7/6/2019"
-output: rmarkdown::github_document
----
+Scripts For Negative Binomial, Zero Inflated Negative Binomial, and
+Multinomial Regression On Traveling Model
+================
+Zhanhao Zhang
+7/6/2019
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 ## Models to explore
-We are going to explore several different models on the traveling data. There are several variations for the models:  
-Type of model: poisson regression, negative binomial regression, zero-inflated negative binomial regression, multinomial regression.  
-Representation of distance: geographic distance or travel time between source and destination.  
-Whether additional covariates are added: if added, then the added covariates are indicators for ad2 and geographic distance or travel time from source location to Malabo.  
-Cutoffs: a cutoff on geographic distance or travel time where different models are adopted and data are fitted separately on the two sides of the cutoff boundary. We assume exponential dependence on geographic distance or travel time for near trips, while power dependence for far trips.  
+
+We are going to explore several different models on the traveling data.
+There are several variations for the models:  
+Type of model: poisson regression, negative binomial regression,
+zero-inflated negative binomial regression, multinomial regression.  
+Representation of distance: geographic distance or travel time between
+source and destination.  
+Whether additional covariates are added: if added, then the added
+covariates are indicators for ad2 and geographic distance or travel time
+from source location to Malabo.  
+Cutoffs: a cutoff on geographic distance or travel time where different
+models are adopted and data are fitted separately on the two sides of
+the cutoff boundary. We assume exponential dependence on geographic
+distance or travel time for near trips, while power dependence for far
+trips.
 
 ## Packages needed
 
-```{r, eval=FALSE}
+``` r
 library(data.table)
 library(MASS)
 library(ggplot2)
@@ -29,7 +35,8 @@ library(ggpubr)
 ```
 
 ## Read data
-```{r, eval=FALSE}
+
+``` r
 data <- read.csv("../../travel_times.csv", header = T)
 colnames <- colnames(data)
 BI_survey_data <- read.csv("../../BI_survey_data.csv", header = T)
@@ -37,15 +44,31 @@ BI_survey_data <- data.table(BI_survey_data)
 ```
 
 ## Cleaned data for each model
-To fit the data into each model, we have to clean the data first. The cleaned data are saved as [name].csv, where [name] is the same as their dataframes' names.  
-rel_gravity_dat.csv: rel_gravity_dat, to feed into poisson regression, negative binomial regression, and zero-inflated negative binomial regression without additional covariates.  
-rel_gravity_dat_covs.csv: rel_gravity_dat_covs, to feed into poisson regression, negative binomial regression, and zero-inflated negative binomial regression with additional covariates (indicators for ad2 and geometric distance/travel time from source location to Malabo).  
-rel_dat_mul.csv: rel_dat_mul, to feed into multinomial regression (a dataframe that represents commuting flow w by duplicating the row by w times).  
-test_dat_mul.csv: test_dat_mul, to make it easier for prediction and get the sum of residuals (a dataframe that represents commuting flow w by adding an additional column, w_total, in each row to indicate the total commuting flow out of each given areaId).
+
+To fit the data into each model, we have to clean the data first. The
+cleaned data are saved as \[name\].csv, where \[name\] is the same as
+their dataframes’ names.  
+rel\_gravity\_dat.csv: rel\_gravity\_dat, to feed into poisson
+regression, negative binomial regression, and zero-inflated negative
+binomial regression without additional covariates.  
+rel\_gravity\_dat\_covs.csv: rel\_gravity\_dat\_covs, to feed into
+poisson regression, negative binomial regression, and zero-inflated
+negative binomial regression with additional covariates (indicators for
+ad2 and geometric distance/travel time from source location to
+Malabo).  
+rel\_dat\_mul.csv: rel\_dat\_mul, to feed into multinomial regression (a
+dataframe that represents commuting flow w by duplicating the row by w
+times).  
+test\_dat\_mul.csv: test\_dat\_mul, to make it easier for prediction and
+get the sum of residuals (a dataframe that represents commuting flow w
+by adding an additional column, w\_total, in each row to indicate the
+total commuting flow out of each given areaId).
 
 ## Helper functions
+
 Calculate the distance between two coordinates.
-```{r, eval=FALSE}
+
+``` r
 dist <- function(src_cor, dest_cor){
   ###
   # dist() is a function that calculates the geographic distance of a
@@ -62,7 +85,8 @@ dist <- function(src_cor, dest_cor){
 ```
 
 Get the population of a given location
-```{r, eval=FALSE}
+
+``` r
 pop <- function(str){
   ###
   # pop() is a function that gets the population of a given location
@@ -107,8 +131,10 @@ pop <- function(str){
 }
 ```
 
-Convert the strings that indicate travel destinations in the column names to the name of that location. For instance, "ti_ban" to "Baney".
-```{r, eval=FALSE}
+Convert the strings that indicate travel destinations in the column
+names to the name of that location. For instance, “ti\_ban” to “Baney”.
+
+``` r
 cvt <- function(str){
   ###
   # cvt() is a function that converts a string to a more readable format
@@ -141,8 +167,11 @@ cvt <- function(str){
 }
 ```
 
-Get the coordinates of a location. The coordinates is looked up from wikipedia, and the coordinates adopted are at the center of each location.
-```{r, eval=FALSE}
+Get the coordinates of a location. The coordinates is looked up from
+wikipedia, and the coordinates adopted are at the center of each
+location.
+
+``` r
 loc2 <- function(str){
   ###
   # loc2() is a function that returns the coordinates of a given location
@@ -183,8 +212,12 @@ loc2 <- function(str){
 }
 ```
 
-An alternative way to figure out the coordinates for each location. It is calculated based on the weighted average of coordinates of all areaIds that belong to the location, where the weight is the population of those areaIds.
-```{r, eval=FALSE}
+An alternative way to figure out the coordinates for each location. It
+is calculated based on the weighted average of coordinates of all
+areaIds that belong to the location, where the weight is the population
+of those areaIds.
+
+``` r
 loc <- function(str){
   str <- cvt(str)
   if(length(str) == 1 && str == "EG_Mainland"){
@@ -207,9 +240,21 @@ loc_helper <- function(str){
 }
 ```
 
-Get the travel time from a source location (given by areaID) to a destination location (given by its name). The travel time from Malabo to the mainland of equatorial guinea is obtained from google map. Notice that for each offland travels, people have to travel to Malabo first before they travel offland to the mainland of Equatorial Guinea, so the travel time from that location to the mainland equals to the time from Malabo to the mainland (Bata city) plus the travel time from the source location to Malabo.  
-One thing to be aware of is that we have travel time from each areaId to each areaId, but we only need the travel time from an areaId to one of the 7 destinations (Baney, Malabo, ...), so the travel time is calculated on the average time of the source areaId to all other areaIds that belong to the destination.
-```{r, eval=FALSE}
+Get the travel time from a source location (given by areaID) to a
+destination location (given by its name). The travel time from Malabo to
+the mainland of equatorial guinea is obtained from google map. Notice
+that for each offland travels, people have to travel to Malabo first
+before they travel offland to the mainland of Equatorial Guinea, so the
+travel time from that location to the mainland equals to the time from
+Malabo to the mainland (Bata city) plus the travel time from the source
+location to Malabo.  
+One thing to be aware of is that we have travel time from each areaId to
+each areaId, but we only need the travel time from an areaId to one of
+the 7 destinations (Baney, Malabo, …), so the travel time is calculated
+on the average time of the source areaId to all other areaIds that
+belong to the destination.
+
+``` r
 tt <- function(id_src, str_dest){
   ###
   # tt() is a function that calculates the travel time between a
@@ -266,14 +311,18 @@ tt <- function(id_src, str_dest){
 }
 ```
 
-Stores all the travel destinations from the BI_survey_data's column names.
-```{r, eval=FALSE}
+Stores all the travel destinations from the BI\_survey\_data’s column
+names.
+
+``` r
 centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria", 
               "ti_mok", "ti_ure")
 ```
 
-Fetch the commuting flow from a given areaId to a given destination from the BI_survey_data.
-```{r, eval=FALSE}
+Fetch the commuting flow from a given areaId to a given destination from
+the BI\_survey\_data.
+
+``` r
 C <- function(src_id, dest){
   ###
   # C() is a function that gets the commuting flow between the given
@@ -295,10 +344,16 @@ C <- function(src_id, dest){
 ```
 
 # Negative Binomial Regressions
-### The Negative Binomial Regression will be displayed in two parts: ordinary Negative Binomial Regression, and zero inflated Negative Binomial Regression. The cor_plot_noBox2() function below is a helper function that can generate correlation plots to visualize either of these models. 
 
-A helper function to obtain the correlation plots between the ratio of true value to fitted value and one of the specified covariates (source population, destination population, distance, and travel time). If the true values are 0, then the plots show the relations between the fitted value to that specified covariate.
-```{r}
+### The Negative Binomial Regression will be displayed in two parts: ordinary Negative Binomial Regression, and zero inflated Negative Binomial Regression. The cor\_plot\_noBox2() function below is a helper function that can generate correlation plots to visualize either of these models.
+
+A helper function to obtain the correlation plots between the ratio of
+true value to fitted value and one of the specified covariates (source
+population, destination population, distance, and travel time). If the
+true values are 0, then the plots show the relations between the fitted
+value to that specified covariate.
+
+``` r
 # Correlation plots
 cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
   ###
@@ -382,15 +437,24 @@ cor_plot_all <- function(title, dat, dir){
 ```
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression Without Additional Covariates
-Construct a new dataframe, gravity_dat, that stores the commuting flow, source population, destination population, travel time, and geographic distance between each pair (areaId, destination name).  
-Inputs of the gravity_dat:  
-&nbsp;&nbsp;&nbsp;w: commuting flow  
-&nbsp;&nbsp;&nbsp;N1: population at source location  
-&nbsp;&nbsp;&nbsp;N2: population at destination location  
-&nbsp;&nbsp;&nbsp;d: geographic distance  
-&nbsp;&nbsp;&nbsp;t: travel time  
-Notice that the gravity_dat includes both geographic distance and travel time, while during the model fitting, it will use only one of them. The reason to include both is to make it easier to assess the model performance by selecting either geographic distance or travel time in an easy manner, without having to go through the whole data cleaning process again.
-```{r, eval=FALSE}
+
+Construct a new dataframe, gravity\_dat, that stores the commuting flow,
+source population, destination population, travel time, and geographic
+distance between each pair (areaId, destination name).  
+Inputs of the gravity\_dat:  
+   w: commuting flow  
+   N1: population at source location  
+   N2: population at destination location  
+   d: geographic distance  
+   t: travel time  
+Notice that the gravity\_dat includes both geographic distance and
+travel time, while during the model fitting, it will use only one of
+them. The reason to include both is to make it easier to assess the
+model performance by selecting either geographic distance or travel time
+in an easy manner, without having to go through the whole data cleaning
+process again.
+
+``` r
 gravity_dat <- c()
 
 # The first for-loop iterate through all possible source locations
@@ -419,14 +483,30 @@ for(i in 1:nrow(BI_survey_data)){
 gravity_dat <- data.frame(gravity_dat)
 ```
 
-Get rid of the last row, which comes from Ureka to Ureka. Ureka has only one areaId in the BI_survey_data, and since the travel time is calculated based on the average time from the areaId of source location to all areaIds belong to the destination, we get a 0 for travel time from Ureka to Ureka. Without moving this row, problems will arise.
-```{r, eval=FALSE}
+Get rid of the last row, which comes from Ureka to Ureka. Ureka has only
+one areaId in the BI\_survey\_data, and since the travel time is
+calculated based on the average time from the areaId of source location
+to all areaIds belong to the destination, we get a 0 for travel time
+from Ureka to Ureka. Without moving this row, problems will arise.
+
+``` r
 rel_gravity_dat <- gravity_dat[1:1357,]
 ```
 
-A helper function to generate correlation plots on a given cutoff. The cutoff can be on geographical distance or on travel time. Also, this function can be slightly modified to switch between negative binomial regression and zero inflated negative binomial regression. The return values of this function include the fitted models and the true values on both sides of the cutoff.  
-One thing to notice is that if the cutoff travel distance is greater than 60K, I will remove the covariate N2, because beyond that cutoff, the trips in with higher distance than cutoff only have one destination, the mainland Equitorial Guinea, and thus the destination population will always be the same. Without removing this feature, the zero inflated model will crash.
-```{r, eval=FALSE}
+A helper function to generate correlation plots on a given cutoff. The
+cutoff can be on geographical distance or on travel time. Also, this
+function can be slightly modified to switch between negative binomial
+regression and zero inflated negative binomial regression. The return
+values of this function include the fitted models and the true values on
+both sides of the cutoff.  
+One thing to notice is that if the cutoff travel distance is greater
+than 60K, I will remove the covariate N2, because beyond that cutoff,
+the trips in with higher distance than cutoff only have one destination,
+the mainland Equitorial Guinea, and thus the destination population will
+always be the same. Without removing this feature, the zero inflated
+model will crash.
+
+``` r
 plot_cutoff <- function(cutoff, base_dir, model){
   ###
   # plot_cutoff() is a function that perform fit of a model under a
@@ -528,8 +608,11 @@ plot_cutoff <- function(cutoff, base_dir, model){
 }
 ```
 
-This chunk of code will calculate the AIC and Sum of Residual Square for each cutoff value of geographic distance or travel time, and then write the results into a CSV file.
-```{r, eval=FALSE}
+This chunk of code will calculate the AIC and Sum of Residual Square for
+each cutoff value of geographic distance or travel time, and then write
+the results into a CSV file.
+
+``` r
 aics <- c()
 cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
@@ -568,23 +651,29 @@ write.csv(summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""),
 
 ## Negative Binomial Regression and Zero Inflated Negative Binomial Regression With Additional Covariates (Indicators for Ad2 and travel time or geographic distance between source and Malabo)
 
-Get the relevant data as a dataframe. This is almost identical to the dataframe for regressions without additional covariates, except that it includes the indicators and travel time and geographic distance between source location and Malabo. Again, the last row of the dataframe, which has a travel time of 0, is removed.  
-Inputs of the gravity_dat:  
-&nbsp;&nbsp;&nbsp;w: commuting flow  
-&nbsp;&nbsp;&nbsp;N1: population at source location  
-&nbsp;&nbsp;&nbsp;N2: population at destination location  
-&nbsp;&nbsp;&nbsp;d: geographic distance  
-&nbsp;&nbsp;&nbsp;t: travel time  
-&nbsp;&nbsp;&nbsp;d_mal: geographic distance from source to Malabo  
-&nbsp;&nbsp;&nbsp;t_mal: travel time from source to Malabo  
-&nbsp;&nbsp;&nbsp;Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)  
-```{r, eval=FALSE}
+Get the relevant data as a dataframe. This is almost identical to the
+dataframe for regressions without additional covariates, except that it
+includes the indicators and travel time and geographic distance between
+source location and Malabo. Again, the last row of the dataframe, which
+has a travel time of 0, is removed.  
+Inputs of the gravity\_dat:  
+   w: commuting flow  
+   N1: population at source location  
+   N2: population at destination location  
+   d: geographic distance  
+   t: travel time  
+   d\_mal: geographic distance from source to Malabo  
+   t\_mal: travel time from source to Malabo  
+   Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
+   Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for
+no)  
+   Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
+   Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
+   Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
+   Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
+   Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)
+
+``` r
 gravity_dat_covs <- c()
 for(i in 1:nrow(BI_survey_data)){
   dat <- BI_survey_data[i]
@@ -632,8 +721,11 @@ for(i in 1:ncol(rel_gravity_dat_covs)){
 }
 ```
 
-A helper function to plot generate the correlation plots on the given cutoff. It is almost identical to the plot_cutoff() function above, except that it includes additional covariates in its models.
-```{r, eval=FALSE}
+A helper function to plot generate the correlation plots on the given
+cutoff. It is almost identical to the plot\_cutoff() function above,
+except that it includes additional covariates in its models.
+
+``` r
 plot_cutoff_covs <- function(cutoff, base_dir, model){
   ###
   # plot_cutoff_covs() is a function that perform fit of a model under a
@@ -764,8 +856,13 @@ plot_cutoff_covs <- function(cutoff, base_dir, model){
 }
 ```
 
-Plot the correlation plots at each cutoff, and calculate AIC and sum of residual squares for each case. This is the same as the one for negative binomial regression/zero inflated negative binomial regression without additional covariates above, except that for the calculation of AIC, its constant is 24 instead of 8, since we have 12 covariates instead of 4.
-```{r, eval=FALSE}
+Plot the correlation plots at each cutoff, and calculate AIC and sum of
+residual squares for each case. This is the same as the one for negative
+binomial regression/zero inflated negative binomial regression without
+additional covariates above, except that for the calculation of AIC, its
+constant is 24 instead of 8, since we have 12 covariates instead of 4.
+
+``` r
 aics <- c()
 cutoffs <- c(0, 10, 20, 30, 40, 50, 60, 100, 150, 200) * 1000
 cutoffs_t <- c(0, 50, 100, 150, 200)
@@ -794,8 +891,12 @@ bname <- str_replace_all(base_dir, "/", "_")
 write.csv(aics_summary, file=paste(base_dir, "/", bname, "_AIC Summary.csv", sep=""), row.names = F)
 ```
 
-A super method that can handle different requests from the user. It can generate varies kinds of models based on the requests from the user, and it can also generate the ratio plots and residual plots to visualize the performance of the model if the user prefers to show the plots.
-```{r, eval=FALSE}
+A super method that can handle different requests from the user. It can
+generate varies kinds of models based on the requests from the user, and
+it can also generate the ratio plots and residual plots to visualize the
+performance of the model if the user prefers to show the plots.
+
+``` r
 super_model_fits <- function(rel_dat, model_name, image_name = NULL,
                              show_plots = TRUE, cutoff = 0, 
                              base_dir = "./", use_time = TRUE,
@@ -975,37 +1076,56 @@ super_model_fits <- function(rel_dat, model_name, image_name = NULL,
 
 # Multinomial Regression
 
-Prepare the relevant data and true values as dataframes for multinomial regression.  
-The fundamental difference between the multinomial regression and the  negative binomial regression is that for the multinomial regression, we are trying to estimate the relative probability of a person traveling from the source location to each of the 7 destinations, while for the negative binomial regression, we are trying to predict the total number of people between two locations based on their population, distance or travel time. Thus, the row of the dataframe for negative binomial regression contains the information between (source, destination) pairs, while the row of the dataframe for multinomial regression contains the information between (source, dest1, dest2, ... , dest7).  
-rel_dat_mul is used for training the multinomial regression model. For each pair of locations (areaId for source, name of destination), it the commuting flow w is greater than 0, then the same pair will repeat for w times. The levels of multinomial regression are the 7 different destinations.  
-test_dat_mul stores the dataframe without repeating these pairs. It is used for getting the predicted values comparable to the true values.  
-Inputs of the gravity_dat:  
-&nbsp;&nbsp;&nbsp;w_total: total commuting flow between a given areaId to all 7 locations  
-&nbsp;&nbsp;&nbsp;N1: population at source location  
-&nbsp;&nbsp;&nbsp;t_mal: travel time from source to Malabo  
-&nbsp;&nbsp;&nbsp;Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)  
-&nbsp;&nbsp;&nbsp;N2.ti_mal: population at Malabo and Peri  
-&nbsp;&nbsp;&nbsp;N2.ti_ban: population at Baney  
-&nbsp;&nbsp;&nbsp;N2.ti_lub: population at Luba  
-&nbsp;&nbsp;&nbsp;N2.ti_ria: population at Riaba  
-&nbsp;&nbsp;&nbsp;N2.ti_mok: population at Moka  
-&nbsp;&nbsp;&nbsp;N2.ti_ure: population at Ureka  
-&nbsp;&nbsp;&nbsp;N2.to: population at mainland of equatorial guinea  
-&nbsp;&nbsp;&nbsp;t.ti_mal: travel time from source to Malabo and Peri  
-&nbsp;&nbsp;&nbsp;t.ti_ban: travel time from source to Baney  
-&nbsp;&nbsp;&nbsp;t.ti_lub: travel time from source to Luba  
-&nbsp;&nbsp;&nbsp;t.ti_ria: travel time from source to Riaba  
-&nbsp;&nbsp;&nbsp;t.ti_mok: travel time from source to Moka  
-&nbsp;&nbsp;&nbsp;t.ti_ure: travel time from source to Ureka  
-&nbsp;&nbsp;&nbsp;t.to: travel time from source to mainland of equatorial guinea  
-&nbsp;&nbsp;&nbsp;dest: the destination location, which is one of "to", "ti_mal", "ti_ban", "ti_lub", "ti_ria", "ti_mok", and "ti_ure".
-```{r, eval=FALSE}
+Prepare the relevant data and true values as dataframes for multinomial
+regression.  
+The fundamental difference between the multinomial regression and the
+negative binomial regression is that for the multinomial regression, we
+are trying to estimate the relative probability of a person traveling
+from the source location to each of the 7 destinations, while for the
+negative binomial regression, we are trying to predict the total number
+of people between two locations based on their population, distance or
+travel time. Thus, the row of the dataframe for negative binomial
+regression contains the information between (source, destination) pairs,
+while the row of the dataframe for multinomial regression contains the
+information between (source, dest1, dest2, … , dest7).  
+rel\_dat\_mul is used for training the multinomial regression model. For
+each pair of locations (areaId for source, name of destination), it the
+commuting flow w is greater than 0, then the same pair will repeat for w
+times. The levels of multinomial regression are the 7 different
+destinations.  
+test\_dat\_mul stores the dataframe without repeating these pairs. It is
+used for getting the predicted values comparable to the true values.  
+Inputs of the gravity\_dat:  
+   w\_total: total commuting flow between a given areaId to all 7
+locations  
+   N1: population at source location  
+   t\_mal: travel time from source to Malabo  
+   Peri: an indicator for whether ad2 == Peri (1 for yes, 0 for no)  
+   Malabo: an indicator for whether ad2 == Malabo (1 for yes, 0 for
+no)  
+   Baney: an indicator for whether ad2 == Baney (1 for yes, 0 for no)  
+   Luba: an indicator for whether ad2 == Luba (1 for yes, 0 for no)  
+   Riaba: an indicator for whether ad2 == Riaba (1 for yes, 0 for no)  
+   Moka: an indicator for whether ad2 == Moka (1 for yes, 0 for no)  
+   Ureka: an indicator for whether ad2 == Ureka (1 for yes, 0 for no)  
+   N2.ti\_mal: population at Malabo and Peri  
+   N2.ti\_ban: population at Baney  
+   N2.ti\_lub: population at Luba  
+   N2.ti\_ria: population at Riaba  
+   N2.ti\_mok: population at Moka  
+   N2.ti\_ure: population at Ureka  
+   N2.to: population at mainland of equatorial guinea  
+   t.ti\_mal: travel time from source to Malabo and Peri  
+   t.ti\_ban: travel time from source to Baney  
+   t.ti\_lub: travel time from source to Luba  
+   t.ti\_ria: travel time from source to Riaba  
+   t.ti\_mok: travel time from source to Moka  
+   t.ti\_ure: travel time from source to Ureka  
+   t.to: travel time from source to mainland of equatorial guinea  
+   dest: the destination location, which is one of “to”, “ti\_mal”,
+“ti\_ban”, “ti\_lub”, “ti\_ria”, “ti\_mok”, and “ti\_ure”.
+
+``` r
 rel_dat_mul <- c()
 test_dat_mul <- c()
 for(i in 1:nrow(BI_survey_data)){
@@ -1062,8 +1182,11 @@ for(i in 1:ncol(test_dat_mul)){
 }
 ```
 
-Train the multinomial regression model, and transform the predicted values into a format that is comparable with the true values in the dataset. Then, get the sum of residual squares.
-```{r, eval=FALSE}
+Train the multinomial regression model, and transform the predicted
+values into a format that is comparable with the true values in the
+dataset. Then, get the sum of residual squares.
+
+``` r
 mul_reg <- multinom(dest~., maxit=5000, data = rel_dat_mul)
 pred_mul <- predict(mul_reg, test_dat_mul, "probs")
 for(i in 1:ncol(pred_mul)){
@@ -1076,9 +1199,11 @@ sub <- sub[,as.numeric(order(colnames(sub)))]
 sum((pred_mul - sub)^2)
 ```
 
-Get the original values, predicted values and data with the format that can easily obtain correlation plots.  
+Get the original values, predicted values and data with the format that
+can easily obtain correlation plots.  
 And, plot these correlation plots.
-```{r, eval=FALSE}
+
+``` r
 dat <- c()
 pred_mul_rs <- c()
 orig <- c()
@@ -1120,20 +1245,29 @@ cor_plot_all("multinom \n", dat, base_dir)
 ```
 
 # Results
-So far, we have tried out Negative Binomial Regression, Zero Inflated Negative Binomial Regression, and Multinomial Regression. To evaluate their performance, I plotted ratio plots (data / fitted.values) and residual plots (data - fitted.values) for each of the covariate for each model. The plots for the best model (multinomial regression), and the worst model (negative binomial using geographic distance with no cutoff on distance) are shown below:  
+
+So far, we have tried out Negative Binomial Regression, Zero Inflated
+Negative Binomial Regression, and Multinomial Regression. To evaluate
+their performance, I plotted ratio plots (data / fitted.values) and
+residual plots (data - fitted.values) for each of the covariate for each
+model. The plots for the best model (multinomial regression), and the
+worst model (negative binomial using geographic distance with no cutoff
+on distance) are shown
+below:
 
 ### Multinomial Regression Performance Plots
-```{r pressure, echo=FALSE, fig.cap="A caption", out.width = '100%'}
-knitr::include_graphics("../data/images/multinom.png")
-```
+
+<img src="../data/images/multinom.png" title="A caption" alt="A caption" width="100%" />
 
 ### Zero Inflated Negative Binomial Regression Performance Plots
-```{r, echo=FALSE, fig.cap="A caption", out.width = '100%'}
-knitr::include_graphics("../data/images/zinf_time_negbin_noCov_cutoff=0.png")
-```
 
-To see a complete summary of AIC and Sum of Residual Squares of each model at each cutoff, view the [summary.csv](../../experiments/summary.csv)  
-For references on the column names in summary.csv, you can look at [column_names.csv](../../experiments/column_names.csv)  
+<img src="../data/images/zinf_time_negbin_noCov_cutoff=0.png" title="A caption" alt="A caption" width="100%" />
+
+To see a complete summary of AIC and Sum of Residual Squares of each
+model at each cutoff, view the
+[summary.csv](../../experiments/summary.csv)  
+For references on the column names in summary.csv, you can look at
+[column\_names.csv](../../experiments/column_names.csv)  
 Notations:  
 distance: using distance instead of travel time in the model.  
 time: using travel time instead of distance in the model.  
@@ -1141,4 +1275,6 @@ negbin: using negative binomial regression for the model.
 poisson: using poisson regression for the model.  
 multinomial: using multinomial regression for the model.  
 zinf: the model is a zero-inflated version.  
-covs: additional covariates (indicators for ad2, and travel time/distance from source location to Malabo) are included in the model fitting.
+covs: additional covariates (indicators for ad2, and travel
+time/distance from source location to Malabo) are included in the model
+fitting.

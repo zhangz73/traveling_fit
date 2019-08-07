@@ -22,14 +22,17 @@ library(MASS)
 library(corrplot)
 library(ggplot2)
 
-source("../../extract_models.R")
+source("../scripts/extract_models.R")
 ```
 
 ## Read the Data
+train_data: pre-cleaned data with covariates for ad2 included, used for the poisson regression and negative binomial regression.  
+rel_dat_mul: the pre-cleaned data used to train multinomial regression model, with each pair of (source, destination) repeated based on the number of commuting flows between them.  
+test_dat_mul: the pre-cleaned data used to generate predictions for multinomial regression model, which is almost the same as rel_dat_mul except that it doesn't have those duplicates.
 ```{r}
-train_data <- fread("../../rel_gravity_dat_covs.csv", header = T, sep = ",")
-rel_dat_mul <- fread("../../rel_dat_mul.csv", sep = ",", header = T)
-test_dat_mul <- fread("../../test_dat_mul.csv", sep = ",", header = T)
+train_data <- fread("../data/clean/rel_gravity_dat_covs.csv", header = T, sep = ",")
+rel_dat_mul <- fread("../data/clean/rel_dat_mul.csv", sep = ",", header = T)
+test_dat_mul <- fread("../data/clean/test_dat_mul.csv", sep = ",", header = T)
 
 train_data <- data.frame(train_data)
 rel_dat_mul <- data.frame(rel_dat_mul)
@@ -394,7 +397,7 @@ df_mul <- get_pred_values(n, test_dat_mul, "multinom", 0,
                           test_dat_mul[,c(1,3)], rel_dat_mul)
 
 ## Reformat the predicted values of multinomial regression from probabilities to commuting flows
-BI_survery_data <- read.csv("../../BI_survey_data.csv", header = T)
+BI_survery_data <- read.csv("../data/raw/BI_survey_data.csv", header = T)
 centrals <- c("ti_ban", "ti_mal", "ti_mok", 
               "ti_ria", "ti_lub", "ti_ure", "to")
 centrals <- sort(centrals)
