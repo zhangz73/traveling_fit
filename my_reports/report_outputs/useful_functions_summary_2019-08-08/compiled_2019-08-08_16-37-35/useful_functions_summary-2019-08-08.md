@@ -1,12 +1,11 @@
----
-title: "Useful Functions Summary"
-author: "Zhanhao Zhang"
-date: "8/8/2019"
-output: rmarkdown::github_document
----
+Useful Functions Summary
+================
+Zhanhao Zhang
+8/8/2019
 
 ## Take in data, and fit the multinomial regression model
-```{r}
+
+``` r
 mul_fit <- function(train_data_filename){
   ###
   # mul_fit() takes in the filename of cleaned data and return the fitted
@@ -28,7 +27,8 @@ mul_fit <- function(train_data_filename){
 ```
 
 ## Take in fitted model, return probability coefficients
-```{r}
+
+``` r
 mul_predict <- function(coefficient_matrix, test_data_filename){
   ###
   # mul_predict() takes in a matrix of coefficients for multinomial regression
@@ -80,7 +80,8 @@ mul_predict <- function(coefficient_matrix, test_data_filename){
 ```
 
 ## Sample coefficients from multinomial regression model
-```{r}
+
+``` r
 mul_sample <- function(mul_reg){
   ###
   # mul_sample() takes in a multinom object and return a sample of coefficients
