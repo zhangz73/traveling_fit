@@ -234,11 +234,6 @@ get_pred_values <- function(n, dat, model_name, cutoff = 0, signatures,
   
   # get the predicted values for linear regression, poisson regression,
   # or negative binomial regression.
-  if(cutoff > 0){
-    o <- order(train_data$d)
-    dat <- dat[o,]
-    signatures <- signatures[o,]
-  }
   dat_near <- NA
   model_near <- NA
   sampled_models_near <- NA
@@ -285,7 +280,7 @@ plot_scatter_bars <- function(df, models_vec, max = 0){
   # on each of the predicted values.
   #
   # Inputs:
-  #   df: the dataframe to be plotted. It must contain columns
+  #   df: the dataframe to be plotted. It must contain column
   #       "w", which is the original values of data, it should
   #       also have columns for fitted values.
   #   models_vec: a vector of indices indicating the locations
