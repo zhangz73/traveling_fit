@@ -152,8 +152,7 @@ mul_sample <- function(mul_reg){
   #   matrix contained in the summary([multinom object])
   ###
   
-  summary_mul <- summary(mul_reg)
-  coefs_tmp <- summary_mul$coefficients
+  coefs_tmp <- coefficients(mul_reg)
   col_names <- colnames(coefs_tmp)
   coefs <- c()
   for(i in 1:nrow(coefs_tmp)){
