@@ -1,12 +1,11 @@
----
-title: "Useful Functions Summary"
-author: "Zhanhao Zhang"
-date: "8/8/2019"
-output: rmarkdown::github_document
----
+Useful Functions Summary
+================
+Zhanhao Zhang
+8/8/2019
 
 ## Data Transformation Helper Function
-```{r}
+
+``` r
 get_test_dat_mul <- function(test_dat_mul_with_w_filename){
   ###
   # get_test_dat_mul() returns the test_dat_mul to feed in multinomial
@@ -50,20 +49,26 @@ get_rel_dat_mul <- function(test_dat_mul_with_w_filename){
   test_dat_mul <- test_dat_mul_with_w[,1:25]
   test_dat_mul <- data.frame(test_dat_mul)
   rel_dat_mul <- c()
-  test_dat_mul_with_w <- data.table(test_dat_mul_with_w)
-  for(c in centrals){
-    tmp <- test_dat_mul_with_w[test_dat_mul_with_w[[c]] > 0,]
-    dat <- tmp[rep(seq(1, nrow(tmp)), tmp[[c]])]
-    lst_dest <- rep(c, nrow(dat))
-    dat <- cbind(data.frame(dat[,1:25]), data.frame(dest = lst_dest))
-    rel_dat_mul <- data.frame(rbind(data.frame(rel_dat_mul), data.frame(dat)))
+  for(i in 1:nrow(test_dat_mul)){
+    row <- test_dat_mul_with_w[i,]
+    for(c in centrals){
+      w <- row[[c]]
+      if(w > 0){
+        for(j in 1:w){
+          curr_row <- data.frame(cbind(data.frame(row[,1:25]), data.frame(dest = c)))
+          rel_dat_mul <- data.frame(rbind(data.frame(rel_dat_mul),
+                                          data.frame(curr_row)))
+        }
+      }
+    }
   }
   return(rel_dat_mul)
 }
 ```
 
 ## Take in data, and fit the multinomial regression model
-```{r}
+
+``` r
 mul_fit <- function(test_dat_mul_with_w_filename){
   ###
   # mul_fit() takes in the filename of cleaned data and return the fitted
@@ -86,7 +91,8 @@ mul_fit <- function(test_dat_mul_with_w_filename){
 ```
 
 ## Take in fitted model, return probability coefficients
-```{r}
+
+``` r
 mul_predict <- function(coefficient_matrix, test_dat_mul_with_w_filename){
   ###
   # mul_predict() takes in a matrix of coefficients for multinomial regression
@@ -139,7 +145,8 @@ mul_predict <- function(coefficient_matrix, test_dat_mul_with_w_filename){
 ```
 
 ## Sample coefficients from multinomial regression model
-```{r}
+
+``` r
 mul_sample <- function(mul_reg){
   ###
   # mul_sample() takes in a multinom object and return a sample of coefficients
