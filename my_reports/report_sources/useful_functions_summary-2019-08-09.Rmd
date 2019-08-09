@@ -5,23 +5,78 @@ date: "8/8/2019"
 output: rmarkdown::github_document
 ---
 
+## Useful Global Variables
+```{r}
+test_dat_mul <- NULL
+rel_dat_mul <- NULL
+```
+
+## Data Transformation Helper Function
+```{r}
+setup <- function(test_dat_mul_with_w_filename){
+  ###
+  # setup() is a helper function to populate the global variables rel_dat_mul
+  # and test_dat_mul using the given file name
+  #
+  # Input:
+  #   test_dat_mul_with_w_filename: the filename for test_dat_mul_with_w,
+  #                                 which should contain everything useful
+  #                                 for both rel_dat_mul and test_dat_mul.
+  #
+  # Output:
+  #   populate the global variables rel_dat_mul and test_dat_mul
+  ###
+  
+  test_dat_mul_with_w <- fread(here("data/clean", test_dat_mul_with_w_filename), 
+                                 sep = ",", header = T)
+  test_dat_mul_with_w <- data.frame(test_dat_mul_with_w)
+    
+  get_test_dat_mul <- function(){
+    test_dat_mul <- test_dat_mul_with_w[,1:25]
+    return(test_dat_mul)
+  }
+  
+  get_rel_dat_mul <- function(){
+    centrals <- c("to", "ti_ban", "ti_mal", "ti_lub", "ti_ria", "ti_mok", "ti_ure")
+    test_dat_mul <- test_dat_mul_with_w[,1:25]
+    test_dat_mul <- data.frame(test_dat_mul)
+    rel_dat_mul <- c()
+    for(i in 1:nrow(test_dat_mul)){
+      row <- test_dat_mul_with_w[i,]
+      for(c in centrals){
+        w <- row[[c]]
+        if(w > 0){
+          for(j in 1:w){
+            curr_row <- data.frame(cbind(data.frame(row[,1:25]), data.frame(dest = c)))
+            rel_dat_mul <- data.frame(rbind(data.frame(rel_dat_mul),
+                                            data.frame(curr_row)))
+          }
+        }
+      }
+    }
+    return(rel_dat_mul)
+  }
+  
+  print("preparing test_dat_mul...")
+  test_dat_mul <<- get_test_dat_mul()
+  print("preparing rel_dat_mul...")
+  rel_dat_mul <<- get_rel_dat_mul()
+  print("Jobs Done!")
+}
+```
+
 ## Take in data, and fit the multinomial regression model
 ```{r}
-mul_fit <- function(train_data_filename){
+mul_fit <- function(){
   ###
   # mul_fit() takes in the filename of cleaned data and return the fitted
   # multinomial regression model
   #
-  # Input:
-  #   train_data_filename: the filename of trained data, it must be in 
-  #                        the ../data/clean directory
-  #
   # Output:
   #   the fitted multinom object.
   ###
-  train_data_dir <- paste("../data/clean/", train_data_filename, sep = "")
-  train_data <- fread(train_data_dir, sep = ",", header = T)
-  mul_reg <- multinom(dest~. - w_total - areaId, data = train_data, 
+
+  mul_reg <- multinom(dest~. - w_total - areaId, data = rel_dat_mul, 
                         maxit = 5000)
   return(mul_reg)
 }
@@ -29,7 +84,7 @@ mul_fit <- function(train_data_filename){
 
 ## Take in fitted model, return probability coefficients
 ```{r}
-mul_predict <- function(coefficient_matrix, test_data_filename){
+mul_predict <- function(coefficient_matrix){
   ###
   # mul_predict() takes in a matrix of coefficients for multinomial regression
   # and return the predicted values as probabilities for rows in the test data
@@ -39,8 +94,6 @@ mul_predict <- function(coefficient_matrix, test_data_filename){
   #                       which can be obtained via 
   #                         summary([multinom object])$coefficients or
   #                         the returned matrix from mul_sample() function
-  #   test_data_filename: the filename for test data, must be in the
-  #                       ../data/clean/ directory
   #
   # Output:
   #   a dataframe with predicted probabilities for each areaId
@@ -67,9 +120,8 @@ mul_predict <- function(coefficient_matrix, test_data_filename){
     colnames(standardized_pred) <- c("(Base)", rownames)
     return(standardized_pred)
   }
-  
-  test_data_dir <- paste("../data/clean/", test_data_filename, sep = "")
-  test_data <- fread(test_data_dir, sep = ",", header = T)
+
+  test_data <- test_dat_mul
   test_data <- data.frame(test_data)
   dat <- test_data[,!(names(test_data) %in% c("areaId", "w_total"))]
   probs <- predict_mul(coefficient_matrix, dat)
