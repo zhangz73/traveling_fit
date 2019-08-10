@@ -128,11 +128,14 @@ mul_predict <- function(coefficient_matrix, test_dat_mul_with_w_filename){
   }
 
   test_data <- get_test_dat_mul(test_dat_mul_with_w_filename)
+  names <- unique(get_rel_dat_mul(test_dat_mul_with_w_filename)$dest)
+  
   print("model fitting...")
   test_data <- data.frame(test_data)
   dat <- test_data[,!(names(test_data) %in% c("areaId", "w_total"))]
   probs <- predict_mul(coefficient_matrix, dat)
-  colnames(probs) <- c("p.ban", "p.lub", "p.mal", "p.mok", "p.ria", "p.ure", "p.off")
+  names <- str_replace(names, "ti_", "p.")
+  colnames(probs) <- str_replace(names, "to", "p.off")
   result <- cbind(test_data[,names(test_data) %in% c("areaId")], probs)
   return(data.frame(result))
 }
