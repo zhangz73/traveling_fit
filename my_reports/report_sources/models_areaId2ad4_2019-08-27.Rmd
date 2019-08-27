@@ -32,8 +32,18 @@ ad2.pop: the population at the destination admin2.
 d1: the geographic distance between source areaId and destination admin2.  
 d2: the geographic distance between source areaId and destination admin4.  
 w: the commuting flow from source areaId to destination admin4.  
+  
+For some models, we need a gravity model trained on old data (2015-2017). In this case, make sure you prepare an old dataset with these columns, while you are welcome to have any other additional columns (pre-cleaned data in rel_gravity_dat_covs.csv is one of the datasets that satisfy the following requirements):  
+N1: source population.  
+N2: destination population.  
+d: geographic distance between source and destination.  
+w: commuting flow from source to destination.  
 
 ### Obtaining Data
+After executing the following chunck of code, you will get several data that will be needed in the model fittings.  
+dat: the dataset containing commuting flows from areaId to admin4.  
+N2: a vector containing population at each of the admin2 units, where the order of these numbers are Baney, Luba, Malabo, and Riaba.  
+rel_gravity_dat_covs: a dataframe containing all useful information about commuting flows from areaId to admin2 units in 2015-2017.  
 ```{r}
 get_data <- function(data_clean){
   dat <- data_clean[, c("areaId", "admin4Id", "admin2", "aid.pop", "ad4.pop", "d1", "d2", "w")]
@@ -74,9 +84,112 @@ Gravity Model typically trains directly on the commuting data from areaId to adm
 
 Below is the super function to obtain the gravity model while users can specify the above four hyperparameters.
 ```{r}
+# Correlation plots
+cor_plot_single <- function(x, y, res, exp, x_name, y_name, title){
+  ###
+  # cor_plot_single() is a function for plotting a ratio plot
+  #                   and a residual plot for a model with respect
+  #                   to a given covariate
+  # Inputs:
+  #   x: the given covariate to be plotted against
+  #   y: the y-axis, in most cases, it is w^{(D)} / w^{(M)}
+  #   res: the residual, which is w^{(D)} - w^{(M)}
+  #   exp: the expected value of the ratio plot, in most cases,
+  #        it is a horizontal line y = 1
+  #   x_name: the name for x-axis
+  #   y_name: the name for y-axis
+  #   title: the name of the title of the plots
+  # Outputs:
+  #   A list of ggplot() objects, containing one ratio plot and one
+  #   residual plot
+  ###
+  
+  x <- as.numeric(x)
+  y <- as.numeric(y)
+  z <- which(y != 0)
+  p2 <- ggplot() +
+    geom_point(data = NULL, 
+               aes(x = x[z], y = y[z]), col = "red") +
+    ggtitle(paste(title, y_name, "vs", x_name)) +
+    xlab(x_name) + ylab(y_name) + 
+    geom_line(data = NULL, aes(x=x[z], y=exp[z]), col="black") +
+    scale_y_log10(limits = c(0.01, 100)) + 
+    theme(legend.position = "none")
+  p2 <- p2 + scale_x_log10()
+  
+  p_ratio <- ggplot(data = NULL, 
+                    aes(x = x[z], y = y[z])) + geom_bin2d() + scale_x_log10() +
+    scale_fill_gradient(low = "yellow", high = "red") +
+    ggtitle(paste(title, y_name, "vs", x_name)) +
+    xlab(x_name) + ylab(y_name) + 
+    geom_line(data = NULL, aes(x=x[z], y=exp[z]), col="black") +
+    scale_y_log10(limits = c(0.01, 100)) +
+    theme(legend.position = "bottom")
+  
+  p <- ggplot() + 
+    geom_point(data=NULL, 
+               aes(x=x, y=res, col="red")) +
+    ggtitle(paste(title, "residual plot" , x_name)) +
+    xlab(x_name) + ylab("residual plot") + 
+    geom_hline(yintercept = 0, col="black") +
+    theme(legend.position = "none") +
+    scale_x_log10()
+  
+  p_bin <- ggplot(data = NULL, aes(x = x, y = res)) + geom_bin2d() + scale_x_log10() +
+    scale_fill_gradient(low = "yellow", high = "red") +
+    ggtitle(paste(title, "heated residual plot" , x_name)) +
+    xlab(x_name) + ylab("residual plot") + 
+    geom_hline(yintercept = 0, col="black") +
+    theme(legend.position = "bottom")
+  
+  return(list(ratio_plot = p2, heatmap_ratio = p_ratio,
+              residual_plot = p, heatmap_res = p_bin))
+}
+
+cor_plot_all <- function(title, dat, dir){
+  ###
+  # cor_plot_all() is a function to generate all plots for a model
+  # 4 ratio plots and 4 residual plots, arranged in a 2x4 matrix
+  # Inputs:
+  #   title: describes the name and features of the model, which is
+  #          to be used in the title of the plots and the filename
+  #          of the generated image
+  #   dat: a dataframe in the form of (w, d, N1, N2, t, pred), an
+  #        auxilary data structure for the plotting
+  ###
+  p1 <- cor_plot_single(dat$d, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "geographic distance",
+                        "w^{(D)} / w^{(M)}", title)
+  p2 <- cor_plot_single(dat$N1, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "source population",
+                        "w^{(D)} / w^{(M)}", title)
+  p3 <- cor_plot_single(dat$N2, dat$w / dat$pred, dat$w - dat$pred,
+                        rep(1, length(dat$d)), "destination population",
+                        "w^{(D)} / w^{(M)}", title)
+
+  labels_names <- c("d", "N1", "N2")
+  g1 <- ggarrange(p1$ratio_plot, p2$ratio_plot, p3$ratio_plot, ncol = 3, 
+                  labels = labels_names)
+  g2 <- ggarrange(p1$heatmap_ratio, p2$heatmap_ratio, p3$heatmap_ratio, 
+                  ncol = 3, 
+                  labels = labels_names)
+  g3 <- ggarrange(p1$residual_plot, p2$residual_plot, p3$residual_plot, 
+                  ncol = 3, 
+                  labels = labels_names)
+  g4 <- ggarrange(p1$heatmap_res, p2$heatmap_res, p3$heatmap_res, 
+                  ncol = 3, 
+                  labels = labels_names)
+  g <- ggarrange(g1, g2, g3, g4, nrow = 4)
+  
+  png(filename = paste(dir, ".png", sep=""), width = 1000, height = 1300)
+  print(g)
+  dev.off()
+}
+
 super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
                            cutoff = 0, base_dir = "./", exp_dependence_far = F,
-                           exp_dependence_near = T, show_image = F){
+                           exp_dependence_near = T, show_image = F,
+                           prev_dat = NULL){
   ###
   # Inputs:
   #   dat: the data to fit
@@ -101,6 +214,9 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
   #                        DEFAULT = TRUE, which means using exoonential dependency.
   #   show_image: whether to plot the image that visualize the model performance.
   #               DEFAULT = FALSE.
+  #   prev_dat: the dataset from previous years that can be used to train the
+  #             gravity model. Do not have to specify prev_dat if use_prev = F.
+  #             DEFAULT = NULL.
   #
   # Output:
   #   ssr: sum of residual squares of the current selected model on the given dataset.
@@ -119,7 +235,7 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
   pred_near <- NULL
   
   if(use_prev){
-    res <- super_model_fits(rel_gravity_dat_covs, model_name, image_name = NULL,
+    res <- super_model_fits(prev_dat, model_name, image_name = NULL,
                             show_plots = F, cutoff = cutoff, use_time = F,
                             exp_dependence_far = exp_dependence_far,
                             exp_dependence_near = exp_dependence_near)
@@ -174,14 +290,59 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
 }
 ```
 
-The best models fit trained on dataset from 2015-2017 and from 2018 are below:  
+The best models fit trained on dataset from 2015-2017 and from 2018 are below (after trying out different combinations of cutoffs, exponential/power dependencies on geographic distance, and poisson/negbin regression, I obtained the models with lowest SSR for training on dataset from 2015-2017 and for training on dataset from 2018):  
+To obtain the best fit, execute the following chunck of code, where it will genereate plots and SSR for each model.  
+```{r, warning=FALSE, eval=FALSE}
+cutoffs <- c(0, 5, 10, 15, 20, 30, 50, 100, 150) * 1000
+results <- matrix(NA, nrow = 8, ncol = length(cutoffs))
+colnames(results) <- paste("cutoff=", cutoffs / 1000, "k", sep = "")
+models <- c("poisson", "negbin")
+bools <- c(T, F)
+rownames(results) <- c("poisson_old_exp", "poisson_old_pow", 
+                       "poisson_2018_exp", "poisson_2018_pow",
+                       "negbin_old_exp", "negbin_old_pow", 
+                       "negbin_2018_exp", "negbin_2018_pow")
+
+get_image_name <- function(model_name, use_prev, cutoff, exp_dependence_near){
+  train_name <- "trainData=2018"
+  if(use_prev){
+    train_name <- "trainData=old"
+  }
+  cutoff_name <- paste("cutoff=", cutoff / 1000, "k", sep = "")
+  dep_name <- "near=power"
+  if(exp_dependence_near){
+    dep_name <- "near=exp"
+  }
+  return(paste(model_name, train_name, cutoff_name, dep_name, sep = "_"))
+}
+
+for(i in 1:length(cutoffs)){
+  idx <- 1
+  for(m in models){
+    for(prev in bools){
+      for(dep in bools){
+        tryCatch({
+        img_name <- get_image_name(m, prev, cutoffs[i], dep)
+        results[idx, i] <- super_fit.2018(dat, m, use_prev = prev, 
+              image_name = img_name, cutoff = cutoffs[i], 
+              base_dir = here("data/images/experiments_areaId2ad4/plots/"), 
+              exp_dependence_near = dep, show_image = T,
+              prev_dat = rel_gravity_dat_covs)
+        }, error = function(cond){return(NA)})
+        idx <- idx + 1
+      }
+    }
+  }
+}
+write.csv(results, here("data/images/experiments_areaId2ad4/summary_ssr.csv"))
+```
   
 Trained on 2015-2017 (exponential dependency on geographic distance for data points whose distance below the cutoff, use negative binommial regression, cutoff at 50km). SSR = 5662.416.
-```{r pressure, echo=FALSE, out.width = '60%', fig.cap="Trained on 2015-2017", fig.align='center'}
+```{r pressure, echo=FALSE, out.width = '100%', fig.cap="Trained on 2015-2017", fig.align='center'}
 knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots",  "negbin_trainData=old_cutoff=50k_near=exp.png"))
 ```
 Trained on 2018 (exponential dependency on geographic distance for data points whose distance below the cutoff, use poisson regression, cutoff at 15km). SSR = 3635.204.
-```{r, echo=FALSE, out.width = '60%', fig.cap="Trained on 2018", fig.align='center'}
+```{r, echo=FALSE, out.width = '100%', fig.cap="Trained on 2018", fig.align='center'}
 knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots",  "poisson_trainData=2018_cutoff=15k_near=exp.png"))
 ```
 
@@ -196,7 +357,8 @@ The correlation plots for these two models are:
 # Both models predict on the dataset for 2018
 
 old_model <- super_fit.2018(dat, model_name = "negbin", use_prev = T, 
-                            cutoff = 50 * 1000, exp_dependence_near = T)
+                            cutoff = 50 * 1000, exp_dependence_near = T,
+                            prev_dat = rel_gravity_dat_covs)
 new_model <- super_fit.2018(dat, model_name = "poisson", use_prev = F,
                             cutoff = 15 * 1000, exp_dependence_near = T)
 
@@ -212,8 +374,8 @@ abline(a = 0, b = 1, col = "red")
 ```
 
 ### Disambiguation Model
-Disambiguation Model is comprised of two parts: first map areaId to admin2 units, then using the fact that we are leaving from a known admin2 unit, calculate the probability of people traveling to each of its admin4 units based on their population. The first part is fitted using gravity model, either through commuting data from 2015-2017, or through data from 2018. The second part is fitted based on pop^k, where pop is the population at each admin4 unit. After several trials of training using Particle Markov Chain Monte Carlo algorithm, I get a set of converged k for each of the admin2 units: 0.2345718 for Baney, 0.5415359 for Luba, 0.4763921 for Malabo, and 2.4926470 for Riaba.  
-
+Disambiguation Model is comprised of two parts: first map areaId to admin2 units, then using the fact that we are leaving from a known admin2 unit, calculate the probability of people traveling to each of its admin4 units based on their population. The first part is fitted using gravity model, either through commuting data from 2015-2017, or through data from 2018. The second part is fitted based on pop^k, where pop is the population at each admin4 unit. After several trials of training using Particle Markov Chain Monte Carlo algorithm, I get a set of converged k for each of the admin2 units: 0.2345718 for Baney, 0.5415359 for Luba, 0.4763921 for Malabo, and 2.4926470 for Riaba.   
+Note: Optimal Ks are obtained by assuming that the first part of the disambiguation model (areaId to admin2) is perfect, where the predicted commuting flow from areaId to admin2 is exactly the same as the original commuting flow, and then under this assumption, we use the particle MCMC to get the optimal K for pop. Therefore, it is possible that the SSR for optimal K is larger than some other K values due to the effect of the model in the first part.  
 ```{r}
 disambiguation_model <- function(dat, N2, model_near = NULL, model_far = NULL, 
                                  cutoff = 0, pop_vec = 0){
@@ -289,17 +451,51 @@ The correlation plots for the two parts of the disambiguation model are:
 knitr::include_graphics(c(here("data/images/experiments_areaId2ad2/plots",  "disambiguation_fir.png"), here("data/images/experiments_areaId2ad2/plots",  "disambiguation_sec.png")))
 ```
 Though the fit looks reasonable for now, this model works very poorly for predicting commuting flow from areaId to admin4. One of the possible reasons is that the probability of traveling to each admin4 unit is proportional to pop^k (according to the assumption of the disambiguation model), which smooth out the probability for each admin4 unit. In other word, probabilities of admin4 units within the same admin2 area are close to each other. However, in reality, there are usually very few amount of people depart from each areaId, while there are a lot of admin4 units within an admin2 area, so there is only a tiny amount of commuting flow allocated to each admin4 unit. The correlation plot of commuting flow from areaId to admin4 looks like the following (lowest possible SSR = 8014.962):  
-```{r}
+```{r, warning=FALSE}
 pop_vec <- c(0.2345718, 0.5415359, 0.4763921, 2.4926470)
-prev_model <- super_fit.2018(dat, "negbin", use_prev = T, cutoff = 20 * 1000)
+prev_model <- super_fit.2018(dat, "negbin", use_prev = T, cutoff = 20 * 1000,
+                             prev_dat = rel_gravity_dat_covs)
 res <- disambiguation_model(dat, model_near = prev_model$model_near, 
                              model_far = prev_model$model_far, 
                              N2, pop_vec = pop_vec, cutoff = 20 * 1000)
 plot(res, dat$w, main = "disambiguation model", xlab = "fitted.values",
      ylab = "original.values", xlim = c(0, 20))
 abline(a = 0, b = 1, col = "red")
+dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
+                         pred = res)
+cor_plot_all(title = "disambiguationModel_K=optimal\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=optimal"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=optimal.png"))
 ssr_dis <- sum((res - dat$w)^2)
-print(paste("ssr =", sum((res - dat$w)^2)))
+print(paste("Optimal K: ssr =", sum((res - dat$w)^2)))
+
+res <- disambiguation_model(dat, model_near = prev_model$model_near, 
+                             model_far = prev_model$model_far, 
+                             N2, pop_vec = 1, cutoff = 20 * 1000)
+plot(res, dat$w, main = "disambiguation model K = 1", xlab = "fitted.values",
+     ylab = "original.values", xlim = c(0, 20))
+abline(a = 0, b = 1, col = "red")
+dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
+                         pred = res)
+cor_plot_all(title = "disambiguationModel_K=1\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=1"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=1.png"))
+ssr_dis <- sum((res - dat$w)^2)
+print(paste("K = 1: ssr =", sum((res - dat$w)^2)))
+
+res <- disambiguation_model(dat, model_near = prev_model$model_near, 
+                             model_far = prev_model$model_far, 
+                             N2, pop_vec = 0, cutoff = 20 * 1000)
+plot(res, dat$w, main = "disambiguation model K = 0", xlab = "fitted.values",
+     ylab = "original.values", xlim = c(0, 20))
+abline(a = 0, b = 1, col = "red")
+dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
+                         pred = res)
+cor_plot_all(title = "disambiguationModel_K=0\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=0"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=0.png"))
+ssr_dis <- sum((res - dat$w)^2)
+print(paste("K = 0: ssr =", sum((res - dat$w)^2)))
 ```
 
 ### RandomForest Algorithm
@@ -310,6 +506,11 @@ plot(rf$predicted, dat$w, main = "randomForest performance",
      xlab = "predicted values", ylab = "original commuting flow",
      xlim = c(0, 20))
 abline(a = 0, b = 1, col = "red")
+dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
+                         pred = rf$predicted)
+cor_plot_all(title = "Random Forest Algorithm\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/randomForest"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/randomForest.png"))
 print(ssr_rf)
 ```
 
@@ -321,6 +522,11 @@ ssr_gb <- sum((gb$fit - dat$w)^2)
 plot(gb$fit, dat$w, main = "Gradient Boosting Performance", xlim = c(0, 20),
      xlab = "predicted values", ylab = "original commuting flows")
 abline(a = 0, b = 1, col = "red")
+dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
+                         pred = gb$fit)
+cor_plot_all(title = "Gradient Boosting Algorithm\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/gradientBoosting"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/gradientBoosting.png"))
 print(ssr_gb)
 ```
 You may notice that the Gradient Boosting Algorithm gives the best fit, for it gives the lowest SSR. However, if we take a closer look by splitting up the SSR for training set and validation set, we will realize that the story is completely different.  
@@ -397,6 +603,14 @@ plot(fv_res$pred_valid, dat_tofit_valid$w, main = "validation set",
      ylim = c(0, max(fv_res$pred_valid, dat_tofit_valid$w)))
 abline(a = 0, b = 1, col = "red")
 
+dat_toplot <- data.frame(N1 = c(dat_tofit_train$N1, dat_tofit_valid$N1), 
+                         N2 = c(dat_tofit_train$N2, dat_tofit_valid$N2), 
+                         d = c(dat_tofit_train$d, dat_tofit_valid$d), 
+                         w = c(dat_tofit_train$w, dat_tofit_valid$w),
+                         pred = c(fv_res$pred_train, fv_res$pred_valid))
+cor_plot_all(title = "Features Mapping Method\n", dat = dat_toplot, 
+    dir = here("data/images/experiments_areaId2ad4/plots/featuresMapping"))
+knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/featuresMapping.png"))
 ssr_fm <- sum((fv_res$pred_train - dat_tofit_train$w)^2) + 
           sum((fv_res$pred_valid - dat_tofit_valid$w)^2)
 ```
