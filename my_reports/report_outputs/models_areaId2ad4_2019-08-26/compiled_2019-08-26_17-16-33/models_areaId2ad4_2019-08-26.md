@@ -1,19 +1,18 @@
----
-title: "Models For Predicting Commuting Flow From areaId to admin4 units"
-author: "Zhanhao Zhang"
-date: "8/23/2019"
-output: rmarkdown::github_document
----
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
+Models For Predicting Commuting Flow From areaId to admin4 units
+================
+Zhanhao Zhang
+8/23/2019
 
 ## Introduction
-We are going to explore a few models that can predict the commuting flows from areaId to admin4 units. Attempted models are: gravity model, disambiguation model, randomForest algorithm, gradient boosting algorithm, and features mapping method.
+
+We are going to explore a few models that can predict the commuting
+flows from areaId to admin4 units. Attempted models are: gravity model,
+disambiguation model, randomForest algorithm, gradient boosting
+algorithm, and features mapping method.
 
 ### Libraries
-```{r}
+
+``` r
 library(here)
 library(randomForest)
 library(gbm)
@@ -21,20 +20,28 @@ library(data.table)
 
 source(here("scripts/extract_models.R"))
 ```
+
 ### Required Data
-To get these models work, we need a cleaned data that represents the commuting flows from areaId to admin4. Required columns are listed below (additional columns are optional and have no effect on the models below):  
+
+To get these models work, we need a cleaned data that represents the
+commuting flows from areaId to admin4. Required columns are listed below
+(additional columns are optional and have no effect on the models
+below):  
 areaId: the areaId of the source.  
 admin4Id: the admin4Id of the destination.  
 admin2: the admin2 name of the destination.  
 aid.pop: the population at the source areaId.  
 ad4.pop: the population at the destination admin4.  
 ad2.pop: the population at the destination admin2.  
-d1: the geographic distance between source areaId and destination admin2.  
-d2: the geographic distance between source areaId and destination admin4.  
-w: the commuting flow from source areaId to destination admin4.  
+d1: the geographic distance between source areaId and destination
+admin2.  
+d2: the geographic distance between source areaId and destination
+admin4.  
+w: the commuting flow from source areaId to destination admin4.
 
 ### Obtaining Data
-```{r}
+
+``` r
 get_data <- function(data_clean){
   dat <- data_clean[, c("areaId", "admin4Id", "admin2", "aid.pop", "ad4.pop", "d1", "d2", "w")]
   colnames(dat) <- c("areaId", "admin4Id", "admin2", "N1", "N2", "d1", "d", "w")
@@ -66,14 +73,24 @@ rel_gravity_dat_covs <- data.frame(rel_gravity_dat_covs)
 ```
 
 ### Gravity Model
-Gravity Model typically trains directly on the commuting data from areaId to admin4 units in 2018. The covariates are: N1 (source population), N2 (destination population), and d (geographic distance between areaId and admin4). There are quite a few hyperparameters for the gravity model:  
-1. poisson regression VS negative binomial regression  
-2. training on commuting data from 2015-2017 VS from 2018  
-3. the cutoff on geographic distance to split the data with two separate models  
-4. exponential dependency VS power dependency on distance for data below cutoff  
 
-Below is the super function to obtain the gravity model while users can specify the above four hyperparameters.
-```{r}
+Gravity Model typically trains directly on the commuting data from
+areaId to admin4 units in 2018. The covariates are: N1 (source
+population), N2 (destination population), and d (geographic distance
+between areaId and admin4). There are quite a few hyperparameters for
+the gravity model:  
+1\. poisson regression VS negative binomial regression  
+2\. training on commuting data from 2015-2017 VS from 2018  
+3\. the cutoff on geographic distance to split the data with two
+separate models  
+4\. exponential dependency VS power dependency on distance for data
+below cutoff
+
+Below is the super function to obtain the gravity model while users can
+specify the above four
+hyperparameters.
+
+``` r
 super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
                            cutoff = 0, base_dir = "./", exp_dependence_far = F,
                            exp_dependence_near = T, show_image = F){
@@ -171,66 +188,131 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
 }
 ```
 
-The best models fit trained on dataset from 2015-2017 and from 2018 are below:  
-  
-Trained on 2015-2017 (exponential dependency on geographic distance for data points whose distance below the cutoff, use negative binommial regression, cutoff at 50km). SSR = 5662.416.
-```{r pressure, echo=FALSE, out.width = '60%', fig.cap="Trained on 2015-2017", fig.align='center'}
-knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots",  "negbin_trainData=old_cutoff=50k_near=exp.png"))
-```
-Trained on 2018 (exponential dependency on geographic distance for data points whose distance below the cutoff, use poisson regression, cutoff at 15km). SSR = 3635.204.
-```{r, echo=FALSE, out.width = '60%', fig.cap="Trained on 2018", fig.align='center'}
-knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots",  "poisson_trainData=2018_cutoff=15k_near=exp.png"))
-```
+The best models fit trained on dataset from 2015-2017 and from 2018 are
+below:
 
-The correlation plots for these two models are:  
-```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption"}
-knitr::include_graphics(c(here("data/images/experiments_areaId2ad4/plots",  "scatter_old.png"), here("data/images/experiments_areaId2ad4/plots",  "scatter_new.png")))
-```
+Trained on 2015-2017 (exponential dependency on geographic distance for
+data points whose distance below the cutoff, use negative binommial
+regression, cutoff at 50km). SSR = 5662.416.
+<img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad4/plots/negbin_trainData=old_cutoff=50k_near=exp.png" title="Trained on 2015-2017" alt="Trained on 2015-2017" width="60%" style="display: block; margin: auto;" />
+Trained on 2018 (exponential dependency on geographic distance for data
+points whose distance below the cutoff, use poisson regression, cutoff
+at 15km). SSR = 3635.204.
+<img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad4/plots/poisson_trainData=2018_cutoff=15k_near=exp.png" title="Trained on 2018" alt="Trained on 2018" width="60%" style="display: block; margin: auto;" />
+
+The correlation plots for these two models
+are:  
+<img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad4/plots/scatter_old.png" title="caption" alt="caption" width="50%" /><img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad4/plots/scatter_new.png" title="caption" alt="caption" width="50%" />
 
 ### Disambiguation Model
-Disambiguation Model is comprised of two parts: first map areaId to admin2 units, then using the fact that we are leaving from a known admin2 unit, calculate the probability of people traveling to each of its admin4 units based on their population. The first part is fitted using gravity model, either through commuting data from 2015-2017, or through data from 2018. The second part is fitted based on pop^k, where pop is the population at each admin4 unit. After several trials of training using Particle Markov Chain Monte Carlo algorithm, I get a set of converged k for each of the admin2 units: 0.2345718 for Baney, 0.5415359 for Luba, 0.4763921 for Malabo, and 2.4926470 for Riaba.  
-  
-The correlation plots for the two parts of the disambiguation model are:  
-```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption"}
-knitr::include_graphics(c(here("data/images/experiments_areaId2ad2/plots",  "disambiguation_fir.png"), here("data/images/experiments_areaId2ad2/plots",  "disambiguation_sec.png")))
-```
-Though the fit looks reasonable for now, this model works very poorly for predicting commuting flow from areaId to admin4. One of the possible reasons is that the probability of traveling to each admin4 unit is proportional to pop^k (according to the assumption of the disambiguation model), which smooth out the probability for each admin4 unit. In other word, probabilities of admin4 units within the same admin2 area are close to each other. However, in reality, there are usually very few amount of people depart from each areaId, while there are a lot of admin4 units within an admin2 area, so there is only a tiny amount of commuting flow allocated to each admin4 unit. The correlation plot of commuting flow from areaId to admin4 looks like the following (SSR = 8014.962):  
-```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption", fig.align='center'}
-knitr::include_graphics(here("data/images/experiments_areaId2ad2/plots",  "disambiguation_all.png"))
-```
+
+Disambiguation Model is comprised of two parts: first map areaId to
+admin2 units, then using the fact that we are leaving from a known
+admin2 unit, calculate the probability of people traveling to each of
+its admin4 units based on their population. The first part is fitted
+using gravity model, either through commuting data from 2015-2017, or
+through data from 2018. The second part is fitted based on pop^k, where
+pop is the population at each admin4 unit. After several trials of
+training using Particle Markov Chain Monte Carlo algorithm, I get a set
+of converged k for each of the admin2 units: 0.2345718 for Baney,
+0.5415359 for Luba, 0.4763921 for Malabo, and 2.4926470 for Riaba.
+
+The correlation plots for the two parts of the disambiguation model
+are:  
+<img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad2/plots/disambiguation_fir.png" title="caption" alt="caption" width="50%" /><img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad2/plots/disambiguation_sec.png" title="caption" alt="caption" width="50%" />
+Though the fit looks reasonable for now, this model works very poorly
+for predicting commuting flow from areaId to admin4. One of the possible
+reasons is that the probability of traveling to each admin4 unit is
+proportional to pop^k (according to the assumption of the disambiguation
+model), which smooth out the probability for each admin4 unit. In other
+word, probabilities of admin4 units within the same admin2 area are
+close to each other. However, in reality, there are usually very few
+amount of people depart from each areaId, while there are a lot of
+admin4 units within an admin2 area, so there is only a tiny amount of
+commuting flow allocated to each admin4 unit. The correlation plot of
+commuting flow from areaId to admin4 looks like the following (SSR =
+8014.962):  
+<img src="/Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports/data/images/experiments_areaId2ad2/plots/disambiguation_all.png" title="caption" alt="caption" width="50%" style="display: block; margin: auto;" />
 
 ### RandomForest Algorithm
-```{r}
+
+``` r
 rf <- randomForest(x = dat[, c("N1", "N2", "d")], y = dat$w, ntree = 5000)
 ssr <- sum((rf$predicted - dat$w)^2)
 plot(rf$predicted, dat$w, main = "randomForest performance",
      xlab = "predicted values", ylab = "original commuting flow",
      xlim = c(0, 20))
 abline(a = 0, b = 1, col = "red")
+```
+
+![](models_areaId2ad4_2019-08-26_files/figure-gfm/unnamed-chunk-8-1.png)<!-- -->
+
+``` r
 print(ssr)
 ```
 
+    ## [1] 3805.317
+
 ### Gradient Boosting Algorithm
-```{r, warning=FALSE}
+
+``` r
 gb <- gbm(w ~ log(N1) + log(N2) + log(d), data = dat, n.trees = 20000,
           interaction.depth = 3, train.fraction = 0.8, cv.folds = 5)
+```
+
+    ## Distribution not specified, assuming gaussian ...
+
+``` r
 ssr <- sum((gb$fit - dat$w)^2)
 plot(gb$fit, dat$w, main = "Gradient Boosting Performance", xlim = c(0, 20),
      xlab = "predicted values", ylab = "original commuting flows")
 abline(a = 0, b = 1, col = "red")
+```
+
+![](models_areaId2ad4_2019-08-26_files/figure-gfm/unnamed-chunk-9-1.png)<!-- -->
+
+``` r
 print(ssr)
 ```
-You may notice that the Gradient Boosting Algorithm gives the best fit, for it gives the lowest SSR. However, if we take a closer look by splitting up the SSR for training set and validation set, we will realize that the story is completely different.  
-```{r}
+
+    ## [1] 1269.072
+
+You may notice that the Gradient Boosting Algorithm gives the best fit,
+for it gives the lowest SSR. However, if we take a closer look by
+splitting up the SSR for training set and validation set, we will
+realize that the story is completely
+different.
+
+``` r
 ssr_train <- gb$train.error[length(gb$train.error)] * nrow(dat) * gb$train.fraction
 ssr_valid <- gb$valid.error[length(gb$valid.error)] * nrow(dat) * (1 - gb$train.fraction)
 print(paste("SSR_TRAIN =", ssr_train, "SSR_VALID =", ssr_valid))
 ```
-As you can see, the gradient boosting algorithm suffers from severe overfitting.
+
+    ## [1] "SSR_TRAIN = 19.2333700442096 SSR_VALID = 1248.76027494515"
+
+As you can see, the gradient boosting algorithm suffers from severe
+overfitting.
 
 ### Features Mapping Method
-The last approach, which is also subject to overfitting, is using the idea of features mapping, where we map three features (source population, destination population, and geographic distance) into hundreds or even thousands of features, and then doing a regression on those features for prediction. One thing to be aware of is that using linear regression may give negative predictions, so one way to deal with this is to use abs() or relu() to wrap the predicted values. Both methods give similar results, where training accuracy is super high, while the predicted values for the validation set can hardly fit along the red line. Poisson regression has also be tried, but the sum of residuals squares shoots up very quickly for the validation set as we increase the number of features to get a better fit for the training set. Thus, so far the best choice for the features mapping method is to use linear regression and then a abs() or relu() as an activation function.
-```{r, warning=FALSE}
+
+The last approach, which is also subject to overfitting, is using the
+idea of features mapping, where we map three features (source
+population, destination population, and geographic distance) into
+hundreds or even thousands of features, and then doing a regression on
+those features for prediction. One thing to be aware of is that using
+linear regression may give negative predictions, so one way to deal with
+this is to use abs() or relu() to wrap the predicted values. Both
+methods give similar results, where training accuracy is super high,
+while the predicted values for the validation set can hardly fit along
+the red line. Poisson regression has also be tried, but the sum of
+residuals squares shoots up very quickly for the validation set as we
+increase the number of features to get a better fit for the training
+set. Thus, so far the best choice for the features mapping method is to
+use linear regression and then a abs() or relu() as an activation
+function.
+
+``` r
 feature_vector <- function(num_features_vec, dat_train, dat_valid, init_sd = 1){
   ssr_train_all <- c()
   ssr_valid_all <- c()
@@ -285,7 +367,11 @@ dat_tofit_train <- dat_tofit[split_tofit,]
 dat_tofit_valid <- dat_tofit[-split_tofit,]
 fv_res <- feature_vector(c((1:40) * 20), dat_tofit_train, dat_tofit_valid,
                          init_sd = 1)
+```
 
+![](models_areaId2ad4_2019-08-26_files/figure-gfm/unnamed-chunk-11-1.png)<!-- -->
+
+``` r
 par(mfrow = c(2, 1))
 plot(fv_res$pred_train, dat_tofit_train$w, main = "training set",
      xlim = c(0, max(fv_res$pred_train, dat_tofit_train$w)),
@@ -295,5 +381,10 @@ plot(fv_res$pred_valid, dat_tofit_valid$w, main = "validation set",
      xlim = c(0, max(fv_res$pred_valid, dat_tofit_valid$w)),
      ylim = c(0, max(fv_res$pred_valid, dat_tofit_valid$w)))
 abline(a = 0, b = 1, col = "red")
+```
+
+![](models_areaId2ad4_2019-08-26_files/figure-gfm/unnamed-chunk-11-2.png)<!-- -->
+
+``` r
 par(mfrow = c(1, 1))
 ```
