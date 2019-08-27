@@ -8,59 +8,18 @@ Zhanhao Zhang
 We are going to explore a few models that can predict the commuting
 flows from areaId to admin4 units. Attempted models are: gravity model,
 disambiguation model, randomForest algorithm, gradient boosting
-algorithm, and features mapping
-    method.
+algorithm, and features mapping method.
 
 ### Libraries
 
 ``` r
 library(here)
-```
-
-    ## here() starts at /Users/zhangji/Desktop/others/IHME/Macro/TravelingModel/traveling_fit/my_reports
-
-``` r
 library(randomForest)
-```
-
-    ## randomForest 4.6-14
-
-    ## Type rfNews() to see new features/changes/bug fixes.
-
-``` r
 library(gbm)
-```
-
-    ## Loaded gbm 2.1.5
-
-``` r
 library(data.table)
 
 source(here("scripts/extract_models.R"))
 ```
-
-    ## 
-    ## Attaching package: 'ggplot2'
-
-    ## The following object is masked from 'package:randomForest':
-    ## 
-    ##     margin
-
-    ## 
-    ## Attaching package: 'reshape2'
-
-    ## The following objects are masked from 'package:data.table':
-    ## 
-    ##     dcast, melt
-
-    ## Classes and Methods for R developed in the
-    ## Political Science Computational Laboratory
-    ## Department of Political Science
-    ## Stanford University
-    ## Simon Jackman
-    ## hurdle and zeroinfl functions by Achim Zeileis
-
-    ## Loading required package: magrittr
 
 ### Required Data
 
@@ -699,7 +658,7 @@ knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/randomFor
 print(ssr_rf)
 ```
 
-    ## [1] 3805.841
+    ## [1] 3807.423
 
 ### Gradient Boosting Algorithm
 
@@ -739,7 +698,7 @@ knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/gradientB
 print(ssr_gb)
 ```
 
-    ## [1] 1285.129
+    ## [1] 1318.75
 
 You may notice that the Gradient Boosting Algorithm gives the best fit,
 for it gives the lowest SSR. However, if we take a closer look by
@@ -753,7 +712,7 @@ ssr_valid <- gb$valid.error[length(gb$valid.error)] * nrow(dat) * (1 - gb$train.
 print(paste("SSR_TRAIN =", ssr_train, "SSR_VALID =", ssr_valid))
 ```
 
-    ## [1] "SSR_TRAIN = 16.5498914784026 SSR_VALID = 1267.48417154859"
+    ## [1] "SSR_TRAIN = 17.3440817491515 SSR_VALID = 1300.28261173686"
 
 As you can see, the gradient boosting algorithm suffers from severe
 overfitting.
@@ -893,6 +852,6 @@ knitr::kable(ssr_df, caption = "")
 | Gravity Model Trained On 2015-2017 |  5662.416 |
 | Gravity Model Trained On 2018      |  3635.204 |
 | Disambiguation Model               | 59918.417 |
-| Random Forest Algorithm            |  3805.841 |
-| Gradient Boosting Algorithm        |  1285.129 |
-| Features Mapping Method            |  8607.453 |
+| Random Forest Algorithm            |  3807.423 |
+| Gradient Boosting Algorithm        |  1318.750 |
+| Features Mapping Method            |  7479.294 |
