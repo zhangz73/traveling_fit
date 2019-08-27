@@ -127,6 +127,8 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
     if(cutoff > 0){
       pred_near <- predict(res$model_near, dat_near, type = "response")
     }
+    model_far <- res$model_far
+    model_near <- res$model_near
   } else{
     
     formula_far <- w ~ log(N1) + log(N2) + d
@@ -167,7 +169,8 @@ super_fit.2018 <- function(dat, model_name, use_prev = T, image_name = NULL,
                paste(base_dir, image_name, sep = ""))
   }
   ssr <- sum((dat_toPlot$pred - dat_toPlot$w)^2)
-  return(list(ssr = ssr, model_far = model_far, model_near = model_near))
+  return(list(ssr = ssr, model_far = model_far, model_near = model_near,
+              fitted.values = dat_toPlot$pred, original.values = dat_toPlot$w))
 }
 ```
 
@@ -183,20 +186,115 @@ knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots",  "poiss
 ```
 
 The correlation plots for these two models are:  
-```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption"}
-knitr::include_graphics(c(here("data/images/experiments_areaId2ad4/plots",  "scatter_old.png"), here("data/images/experiments_areaId2ad4/plots",  "scatter_new.png")))
+```{r}
+# old_model is trained on the dataset in 2015-2017, it uses negative binomial
+# regression, cutoff at distance of 50km, and use exponential dependence for
+# data points whose distance are below the cutoff
+# new_model is trained on the dataset in 2018, it uses poisson
+# regression, cutoff at distance of 15km, and use exponential dependence for
+# data points whose distance are below the cutoff
+# Both models predict on the dataset for 2018
+
+old_model <- super_fit.2018(dat, model_name = "negbin", use_prev = T, 
+                            cutoff = 50 * 1000, exp_dependence_near = T)
+new_model <- super_fit.2018(dat, model_name = "poisson", use_prev = F,
+                            cutoff = 15 * 1000, exp_dependence_near = T)
+plot(old_model$fitted.values, old_model$original.values, main = "trained on 2015-2017\nnegbin, cutoff = 15km", xlim = c(0, 20), xlab = "fitted.values",
+     ylab = "original.values")
+abline(a = 0, b = 1, col = "red")
+plot(new_model$fitted.values, new_model$original.values, main = "trained on 2018\npoisson, cutoff = 50km", xlim = c(0, 20), xlab = "fitted.values",
+     ylab = "original.values")
+abline(a = 0, b = 1, col = "red")
 ```
 
 ### Disambiguation Model
 Disambiguation Model is comprised of two parts: first map areaId to admin2 units, then using the fact that we are leaving from a known admin2 unit, calculate the probability of people traveling to each of its admin4 units based on their population. The first part is fitted using gravity model, either through commuting data from 2015-2017, or through data from 2018. The second part is fitted based on pop^k, where pop is the population at each admin4 unit. After several trials of training using Particle Markov Chain Monte Carlo algorithm, I get a set of converged k for each of the admin2 units: 0.2345718 for Baney, 0.5415359 for Luba, 0.4763921 for Malabo, and 2.4926470 for Riaba.  
+
+```{r}
+disambiguation_model <- function(dat, N2, model_near = NULL, model_far = NULL, 
+                                 cutoff = 0, pop_vec = 0){
+  ###
+  # Inputs:
+  #   dat: the data to fit
+  #   N2: a vector containing population at each of the admin2 units, in the
+  #       order of Baney, Luba, Malabo, and Riaba
+  #   model_near: the model for data points whose distance is below the cutoff.
+  #               Do not have to specify model_near when cutoff = 0. DEFAULT = NULL.
+  #   model_far: the model for data points whose distance is above the cutoff.
+  #              DEFAULT = NULL.
+  #   cutoff: the cutoff on geographical distance where we will use two separate
+  #           models for both sides. DEFAULT = 0.
+  #   pop_vec: a vector containing the power of population at admin4 units in the
+  #            second half part of the disambiguation model. If specifying a single
+  #            number for pop_vec, then all admin2 regions will use the same values
+  #            for population's exponents. DEFAULT = 0.
+  #
+  # Output:
+  #   return the predicted commuting flows from areaId to admin4 units. The order
+  #   of the predicted values is consistent with the input dataframe dat.
+  ###
   
+  if(length(pop_vec) == 1){
+    pop_vec <- rep(pop_vec, length(unique(N2)))
+  }
+  
+  dat_N2 <- data.frame(idx = unique(sort(dat$idx)), N2 = N2)
+  
+  curr_dat <- data.frame(cbind(dat, data.frame(row_num = 1:nrow(dat))))
+  dat_near <- curr_dat[curr_dat$d < cutoff,]
+  dat_far <- curr_dat[curr_dat$d >= cutoff,]
+
+  pred_df <- c()
+  if(nrow(dat_far) > 0){
+    rel_far <- merge(dat_far[, !colnames(dat_far) %in% c("N2", "d")], 
+                     dat_N2, by = "idx")
+    names(rel_far) <- gsub("d1", "d", names(rel_far))
+    pred_far <- predict(model_far, rel_far, type = "response")
+    pred_df <- data.frame(rbind(data.frame(pred_df), 
+                                data.frame(row_num = rel_far$row_num, 
+                                           pred.ad2 = pred_far)))
+  }
+  if(nrow(dat_near) > 0){
+    rel_near <- merge(dat_near[, !colnames(dat_near) %in% c("N2", "d")], 
+                     dat_N2, by = "idx")
+    names(rel_near) <- gsub("d1", "d", names(rel_near))
+    pred_near <- predict(model_near, rel_near, type = "response")
+    pred_df <- data.frame(rbind(data.frame(pred_df), 
+                                data.frame(row_num = rel_near$row_num, 
+                                           pred.ad2 = pred_near)))
+  }
+  curr_dat <- merge(curr_dat, pred_df, by = "row_num")
+  
+  w_df <- c()
+  for(i in sort(unique(curr_dat$idx))){
+    rel_dat <- curr_dat[curr_dat$idx == i,]
+    p <- rel_dat$N2 ^ pop_vec[i]
+    p <- p / sum(p)
+    pred_ad4 <- rel_dat$pred.ad2 * p
+    w_df <- data.frame(rbind(data.frame(w_df), data.frame(row_num = rel_dat$row_num,
+                                                          pred.ad4 = pred_ad4)))
+  }
+  curr_dat <- merge(curr_dat, w_df, by = "row_num")
+  curr_dat <- curr_dat[order(curr_dat$row_num),]
+  return(curr_dat$pred.ad4)
+}
+```
+
 The correlation plots for the two parts of the disambiguation model are:  
 ```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption"}
 knitr::include_graphics(c(here("data/images/experiments_areaId2ad2/plots",  "disambiguation_fir.png"), here("data/images/experiments_areaId2ad2/plots",  "disambiguation_sec.png")))
 ```
-Though the fit looks reasonable for now, this model works very poorly for predicting commuting flow from areaId to admin4. One of the possible reasons is that the probability of traveling to each admin4 unit is proportional to pop^k (according to the assumption of the disambiguation model), which smooth out the probability for each admin4 unit. In other word, probabilities of admin4 units within the same admin2 area are close to each other. However, in reality, there are usually very few amount of people depart from each areaId, while there are a lot of admin4 units within an admin2 area, so there is only a tiny amount of commuting flow allocated to each admin4 unit. The correlation plot of commuting flow from areaId to admin4 looks like the following (SSR = 8014.962):  
-```{r, echo=FALSE, out.width = '50%', fig.show='hold', fig.cap="caption", fig.align='center'}
-knitr::include_graphics(here("data/images/experiments_areaId2ad2/plots",  "disambiguation_all.png"))
+Though the fit looks reasonable for now, this model works very poorly for predicting commuting flow from areaId to admin4. One of the possible reasons is that the probability of traveling to each admin4 unit is proportional to pop^k (according to the assumption of the disambiguation model), which smooth out the probability for each admin4 unit. In other word, probabilities of admin4 units within the same admin2 area are close to each other. However, in reality, there are usually very few amount of people depart from each areaId, while there are a lot of admin4 units within an admin2 area, so there is only a tiny amount of commuting flow allocated to each admin4 unit. The correlation plot of commuting flow from areaId to admin4 looks like the following (lowest possible SSR = 8014.962):  
+```{r}
+pop_vec <- c(0.2345718, 0.5415359, 0.4763921, 2.4926470)
+prev_model <- super_fit.2018(dat, "negbin", use_prev = T, cutoff = 20 * 1000)
+res <- disambiguation_model(dat, model_near = prev_model$model_near, 
+                             model_far = prev_model$model_far, 
+                             N2, pop_vec = pop_vec, cutoff = 20 * 1000)
+plot(res, dat$w, main = "disambiguation model", xlab = "fitted.values",
+     ylab = "original.values", xlim = c(0, 20))
+abline(a = 0, b = 1, col = "red")
+print(paste("ssr =", sum((res - dat$w)^2)))
 ```
 
 ### RandomForest Algorithm
