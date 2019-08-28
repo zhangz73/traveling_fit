@@ -41,7 +41,7 @@ w: commuting flow from source to destination.
 
 ### Obtaining Data
 After executing the following chunck of code, you will get several data that will be needed in the model fittings.  
-dat: the dataset containing commuting flows from areaId to admin4.  
+dat: the dataset containing commuting flows from areaId to admin4 in 2018.  
 N2: a vector containing population at each of the admin2 units, where the order of these numbers are Baney, Luba, Malabo, and Riaba.  
 rel_gravity_dat_covs: a dataframe containing all useful information about commuting flows from areaId to admin2 units in 2015-2017.  
 ```{r}
@@ -480,7 +480,6 @@ dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
 cor_plot_all(title = "disambiguationModel_K=1\n", dat = dat_toplot, 
     dir = here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=1"))
 knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=1.png"))
-ssr_dis <- sum((res - dat$w)^2)
 print(paste("K = 1: ssr =", sum((res - dat$w)^2)))
 
 res <- disambiguation_model(dat, model_near = prev_model$model_near, 
@@ -494,7 +493,6 @@ dat_toplot <- data.frame(N1 = dat$N1, N2 = dat$N2, d = dat$d, w = dat$w,
 cor_plot_all(title = "disambiguationModel_K=0\n", dat = dat_toplot, 
     dir = here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=0"))
 knitr::include_graphics(here("data/images/experiments_areaId2ad4/plots/disambiguationModel_K=0.png"))
-ssr_dis <- sum((res - dat$w)^2)
 print(paste("K = 0: ssr =", sum((res - dat$w)^2)))
 ```
 
