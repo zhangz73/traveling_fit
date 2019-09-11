@@ -94,7 +94,7 @@ super_model_fits <- function(rel_dat, model_name, image_name = NULL,
                              ad2_indicators = NULL,
                              use_distance_to_mal = FALSE,
                              exp_dependence_far = FALSE,
-                             exp_dependence_near = TRUE){
+                             exp_dependence_near = TRUE, offset = T){
   ###
   # super_model_fits() is a powerful function that can generate
   # a model based on users choice.
@@ -142,6 +142,9 @@ super_model_fits <- function(rel_dat, model_name, image_name = NULL,
   #                       distance on trips below the cutoff. TRUE for
   #                       exponential dependence, FALSE for power
   #                       dependence. DEFAULT = TRUE
+  #   offset: whether to include a factor offset that considers the case
+  #           where the recorded commuting flows are flows of samples
+  #           rather than of population. DEFAULT = TRUE
   #
   # Outputs:
   #   a list containing four variables:
@@ -159,10 +162,13 @@ super_model_fits <- function(rel_dat, model_name, image_name = NULL,
   #         for calculating total AIC and sum of residual squares.
   ###
   
-  get_formula <- function(use_time, ad2_indicators,
+  get_formula <- function(use_time, ad2_indicators, offset,
                           use_distance_to_mal, exp_dependence){
     formula <- NULL
-    labels <- c("log(N1)", "log(N2)")
+    labels <- c("log(N1)", "log(N2)", "offset(log(n / N1))")
+    if(!offset){
+        labels <- c("log(N1)", "log(N2)")
+    }
     if(use_time){
       if(exp_dependence){
         labels <- c(labels, "t")
@@ -222,9 +228,10 @@ super_model_fits <- function(rel_dat, model_name, image_name = NULL,
     rel_gravity_near <- rel_dat[rel_dat$d <= cutoff,] 
   }
   
-  formula_far <- get_formula(use_time, ad2_indicators,
+  #offset = "n" %in% colnames(rel_dat)
+  formula_far <- get_formula(use_time, ad2_indicators, offset,
                              use_distance_to_mal, exp_dependence_far)
-  formula_near <- get_formula(use_time, ad2_indicators,
+  formula_near <- get_formula(use_time, ad2_indicators, offset,
                               use_distance_to_mal, exp_dependence_near)
   
   model_far <- get_model(model_name, formula_far, rel_gravity_far)
